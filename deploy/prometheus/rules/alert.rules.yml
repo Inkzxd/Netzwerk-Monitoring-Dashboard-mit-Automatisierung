@@ -1,0 +1,34 @@
+groups:
+  - name: app.rules
+    rules:
+      - alert: SpringBootAppDown
+        expr: up{job="spring-boot-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Spring Boot service is down"
+
+      - alert: High5xxRate
+        expr: sum(rate(http_server_requests_seconds_count{job="spring-boot-app",status=~"5.."}[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate"
+
+      - alert: NetworkDeviceDown
+        expr: network_device_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A monitored network device is down"
+
+      - alert: HighLatency
+        expr: network_device_latency_ms > 1000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Network latency is too high"

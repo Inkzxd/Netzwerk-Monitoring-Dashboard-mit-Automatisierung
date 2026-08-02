@@ -1,0 +1,349 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+deploy/
+  alertmanager/
+    alertmanager.yml
+  grafana/
+    provisioning/
+      datasources/
+        datasource.yml
+  prometheus/
+    rules/
+      alert.rules.yml
+    prometheus.yml
+src/
+  main/
+    java/
+      de/
+        htwsaar/
+          monitoring/
+            controller/
+              MonitoringController.java
+            Main.java
+    resources/
+      application.yml
+.gitignore
+docker-compose.yml
+pom.xml
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="deploy/alertmanager/alertmanager.yml">
+global: {}
+
+route:
+  receiver: default
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: default
+</file>
+
+<file path="deploy/grafana/provisioning/datasources/datasource.yml">
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+</file>
+
+<file path="deploy/prometheus/rules/alert.rules.yml">
+# alert.rules.yml
+groups:
+  - name: app.rules
+    rules:
+      - alert: SpringBootAppDown
+        expr: up{job="spring-boot-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Spring Boot service is down"
+
+      - alert: High5xxRate
+        expr: sum(rate(http_server_requests_seconds_count{job="spring-boot-app",status=~"5.."}[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate"
+</file>
+
+<file path="deploy/prometheus/prometheus.yml">
+# prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: spring-boot-app
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app:8080"]
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+</file>
+
+<file path="src/main/resources/application.yml">
+# src/main/resources/application.yml
+spring:
+  application:
+    name: network-monitoring-dashboard
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+server:
+  port: 8080
+</file>
+
+<file path="docker-compose.yml">
+services:
+  services:
+    prometheus:
+      image: prom/prometheus:v2.54.1
+      container_name: prometheus
+      command:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --web.enable-lifecycle
+      ports:
+        - "9090:9090"
+      volumes:
+        - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        - ./deploy/prometheus/rules:/etc/prometheus/rules:ro
+        - prometheus_data:/prometheus
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+
+    alertmanager:
+      image: prom/alertmanager:v0.27.0
+      container_name: alertmanager
+      command:
+        - --config.file=/etc/alertmanager/alertmanager.yml
+        - --storage.path=/alertmanager
+      ports:
+        - "9093:9093"
+      volumes:
+        - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+        - alertmanager_data:/alertmanager
+
+    grafana:
+      image: grafana/grafana:11.1.0
+      container_name: grafana
+      ports:
+        - "3000:3000"
+      environment:
+        GF_SECURITY_ADMIN_USER: admin
+        GF_SECURITY_ADMIN_PASSWORD: admin
+        GF_USERS_ALLOW_SIGN_UP: "false"
+      volumes:
+        - grafana_data:/var/lib/grafana
+        - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+
+  volumes:
+    prometheus_data:
+    alertmanager_data:
+    grafana_data:
+</file>
+
+<file path="src/main/java/de/htwsaar/monitoring/controller/MonitoringController.java">
+package de.htwsaar.monitoring.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+
+@RestController
+public class MonitoringController {
+
+    @GetMapping("/api/status")
+    public Map<String, Object> status() {
+        return Map.of(
+                "status", "ok",
+                "timestamp", LocalDateTime.now().toString(),
+                "service", "network-monitoring-dashboard"
+        );
+    }
+}
+</file>
+
+<file path=".gitignore">
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+.kotlin
+
+### IntelliJ IDEA ###
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/libraries/
+*.iws
+*.iml
+*.ipr
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+</file>
+
+<file path="pom.xml">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.2</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>de.htwsaar</groupId>
+    <artifactId>network-monitoring-dashboard</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>network-monitoring-dashboard</name>
+    <description>Netzwerk-Monitoring Dashboard mit Automatisierung</description>
+
+    <properties>
+        <java.version>21</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+</file>
+
+<file path="src/main/java/de/htwsaar/monitoring/Main.java">
+package de.htwsaar.monitoring;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class Main {
+    public static void main(String[] args) {
+        SpringApplication.run(Main.class, args);
+    }
+}
+</file>
+
+</files>
