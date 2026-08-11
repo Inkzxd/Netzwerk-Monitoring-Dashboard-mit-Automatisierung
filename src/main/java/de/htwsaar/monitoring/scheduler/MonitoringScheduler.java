@@ -13,7 +13,7 @@ public class MonitoringScheduler {
         this.deviceCheckService = deviceCheckService;
     }
 
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedDelayString = "${monitoring.interval:15000}")
     public void runChecks() {
         deviceCheckService.checkAllDevices();
     }

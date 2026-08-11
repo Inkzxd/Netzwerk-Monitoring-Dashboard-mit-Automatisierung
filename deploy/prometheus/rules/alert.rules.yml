@@ -1,34 +1,36 @@
 groups:
-  - name: app.rules
+  - name: network-monitoring.rules
     rules:
+      - alert: NetworkDeviceDown
+        expr: network_device_up{device!=""} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Network device is down"
+          description: "Device {{ $labels.device }} at {{ $labels.host }} is unreachable."
+
+      - alert: HighNetworkLatency
+        expr: network_device_latency_ms{device!=""} > 1000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Network latency is too high"
+          description: "Device {{ $labels.device }} has latency of {{ $value }} ms."
+
+      - alert: MonitoringTargetMissing
+        expr: absent(network_device_up)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No network monitoring metrics available"
+
       - alert: SpringBootAppDown
         expr: up{job="spring-boot-app"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Spring Boot service is down"
-
-      - alert: High5xxRate
-        expr: sum(rate(http_server_requests_seconds_count{job="spring-boot-app",status=~"5.."}[5m])) > 0.1
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High 5xx error rate"
-
-      - alert: NetworkDeviceDown
-        expr: network_device_up == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "A monitored network device is down"
-
-      - alert: HighLatency
-        expr: network_device_latency_ms > 1000
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Network latency is too high"
+          summary: "Spring Boot application is down"

@@ -1,20 +1,41 @@
-# src/main/resources/application.yml
 spring:
   application:
     name: network-monitoring-dashboard
+
+server:
+  port: 8080
+
+monitoring:
+  interval: 15000
+  timeout: 2s
+  devices:
+    - name: Local App
+      host: app
+      port: 8080
+      enabled: true
+
+    - name: Grafana
+      host: grafana
+      port: 3000
+      enabled: true
+
+    - name: Prometheus
+      host: prometheus
+      port: 9090
+      enabled: true
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,prometheus
+
   endpoint:
     health:
       probes:
         enabled: true
       show-details: always
+
   metrics:
     tags:
       application: ${spring.application.name}
-server:
-  port: 8080

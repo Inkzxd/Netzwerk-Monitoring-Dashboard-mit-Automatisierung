@@ -57,18 +57,143 @@ src/
       de/
         htwsaar/
           monitoring/
+            config/
+              MonitoringProperties.java
             controller/
+              DeviceController.java
               MonitoringController.java
+            model/
+              CheckResult.java
+              Device.java
+            scheduler/
+              MonitoringScheduler.java
+            service/
+              DeviceCheckService.java
             Main.java
     resources/
       application.yml
+  test/
+    java/
+      de/
+        htwsaar/
+          monitoring/
+            service/
+              DeviceCheckServiceTest.java
 .gitignore
 docker-compose.yml
+Dockerfile
 pom.xml
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/main/java/de/htwsaar/monitoring/config/MonitoringProperties.java">
+package de.htwsaar.monitoring.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+import java.time.Duration;
+import java.util.List;
+
+@ConfigurationProperties(prefix = "monitoring")
+public record MonitoringProperties(
+        Duration timeout,
+        List<DeviceProperties> devices
+) {
+    public MonitoringProperties {
+        if (timeout == null) {
+            timeout = Duration.ofSeconds(2);
+        }
+
+        if (devices == null) {
+            devices = List.of();
+        }
+    }
+
+    public record DeviceProperties(
+            String name,
+            String host,
+            int port,
+            boolean enabled
+    ) {
+    }
+}
+</file>
+
+<file path="src/test/java/de/htwsaar/monitoring/service/DeviceCheckServiceTest.java">
+package de.htwsaar.monitoring.service;
+
+import de.htwsaar.monitoring.config.MonitoringProperties;
+import de.htwsaar.monitoring.model.CheckResult;
+import de.htwsaar.monitoring.model.Device;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class DeviceCheckServiceTest {
+
+    @Test
+    void shouldReturnDeviceListFromConfiguration() {
+        MonitoringProperties properties =
+                new MonitoringProperties(
+                        Duration.ofMillis(100),
+                        List.of(
+                                new MonitoringProperties.DeviceProperties(
+                                        "Test Device",
+                                        "localhost",
+                                        8080,
+                                        true
+                                )
+                        )
+                );
+
+        DeviceCheckService service =
+                new DeviceCheckService(
+                        properties,
+                        new SimpleMeterRegistry()
+                );
+
+        assertEquals(1, service.getDevices().size());
+        assertEquals(
+                "Test Device",
+                service.getDevices().get(0).getName()
+        );
+    }
+
+    @Test
+    void shouldReturnUnreachableDeviceAsDown() {
+        MonitoringProperties properties =
+                new MonitoringProperties(
+                        Duration.ofMillis(100),
+                        List.of()
+                );
+
+        DeviceCheckService service =
+                new DeviceCheckService(
+                        properties,
+                        new SimpleMeterRegistry()
+                );
+
+        Device device =
+                new Device(
+                        "Invalid Device",
+                        "192.0.2.1",
+                        65500,
+                        true
+                );
+
+        CheckResult result = service.checkDevice(device);
+
+        assertFalse(result.isUp());
+        assertTrue(result.getLatencyMs() >= 0);
+    }
+}
+</file>
 
 <file path="deploy/alertmanager/alertmanager.yml">
 global: {}
@@ -95,25 +220,42 @@ datasources:
 </file>
 
 <file path="deploy/prometheus/rules/alert.rules.yml">
-# alert.rules.yml
 groups:
-  - name: app.rules
+  - name: network-monitoring.rules
     rules:
+      - alert: NetworkDeviceDown
+        expr: network_device_up{device!=""} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Network device is down"
+          description: "Device {{ $labels.device }} at {{ $labels.host }} is unreachable."
+
+      - alert: HighNetworkLatency
+        expr: network_device_latency_ms{device!=""} > 1000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Network latency is too high"
+          description: "Device {{ $labels.device }} has latency of {{ $value }} ms."
+
+      - alert: MonitoringTargetMissing
+        expr: absent(network_device_up)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No network monitoring metrics available"
+
       - alert: SpringBootAppDown
         expr: up{job="spring-boot-app"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Spring Boot service is down"
-
-      - alert: High5xxRate
-        expr: sum(rate(http_server_requests_seconds_count{job="spring-boot-app",status=~"5.."}[5m])) > 0.1
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High 5xx error rate"
+          summary: "Spring Boot application is down"
 </file>
 
 <file path="deploy/prometheus/prometheus.yml">
@@ -136,77 +278,54 @@ alerting:
         - targets: ["alertmanager:9093"]
 </file>
 
-<file path="src/main/resources/application.yml">
-# src/main/resources/application.yml
-spring:
-  application:
-    name: network-monitoring-dashboard
+<file path="src/main/java/de/htwsaar/monitoring/controller/DeviceController.java">
+package de.htwsaar.monitoring.controller;
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      probes:
-        enabled: true
-      show-details: always
-  metrics:
-    tags:
-      application: ${spring.application.name}
-server:
-  port: 8080
-</file>
+import de.htwsaar.monitoring.model.CheckResult;
+import de.htwsaar.monitoring.model.Device;
+import de.htwsaar.monitoring.service.DeviceCheckService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-<file path="docker-compose.yml">
-services:
-  services:
-    prometheus:
-      image: prom/prometheus:v2.54.1
-      container_name: prometheus
-      command:
-        - --config.file=/etc/prometheus/prometheus.yml
-        - --storage.tsdb.path=/prometheus
-        - --web.enable-lifecycle
-      ports:
-        - "9090:9090"
-      volumes:
-        - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-        - ./deploy/prometheus/rules:/etc/prometheus/rules:ro
-        - prometheus_data:/prometheus
-      extra_hosts:
-        - "host.docker.internal:host-gateway"
+import java.util.List;
 
-    alertmanager:
-      image: prom/alertmanager:v0.27.0
-      container_name: alertmanager
-      command:
-        - --config.file=/etc/alertmanager/alertmanager.yml
-        - --storage.path=/alertmanager
-      ports:
-        - "9093:9093"
-      volumes:
-        - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-        - alertmanager_data:/alertmanager
+@RestController
+@RequestMapping("/api")
+public class DeviceController {
 
-    grafana:
-      image: grafana/grafana:11.1.0
-      container_name: grafana
-      ports:
-        - "3000:3000"
-      environment:
-        GF_SECURITY_ADMIN_USER: admin
-        GF_SECURITY_ADMIN_PASSWORD: admin
-        GF_USERS_ALLOW_SIGN_UP: "false"
-      volumes:
-        - grafana_data:/var/lib/grafana
-        - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    private final DeviceCheckService deviceCheckService;
 
-  volumes:
-    prometheus_data:
-    alertmanager_data:
-    grafana_data:
+    public DeviceController(DeviceCheckService deviceCheckService) {
+        this.deviceCheckService = deviceCheckService;
+    }
+
+    @GetMapping("/devices")
+    public List<Device> devices() {
+        return deviceCheckService.getDevices();
+    }
+
+    @GetMapping("/checks/latest")
+    public List<CheckResult> latestChecks() {
+        return deviceCheckService.getLatestResults();
+    }
+
+    @PostMapping("/checks/run")
+    public ResponseEntity<List<CheckResult>> runChecks() {
+        return ResponseEntity.ok(
+                deviceCheckService.checkAllDevices()
+        );
+    }
+
+    @GetMapping("/devices/{name}")
+    public ResponseEntity<Device> device(@PathVariable String name) {
+        return deviceCheckService.getDevices()
+                .stream()
+                .filter(device -> device.getName().equalsIgnoreCase(name))
+                .findFirst()
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+}
 </file>
 
 <file path="src/main/java/de/htwsaar/monitoring/controller/MonitoringController.java">
@@ -230,6 +349,263 @@ public class MonitoringController {
         );
     }
 }
+</file>
+
+<file path="src/main/java/de/htwsaar/monitoring/model/CheckResult.java">
+package de.htwsaar.monitoring.model;
+
+import java.time.LocalDateTime;
+
+public class CheckResult {
+    private String deviceName;
+    private boolean up;
+    private long latencyMs;
+    private LocalDateTime checkedAt;
+
+    public CheckResult(String deviceName, boolean up, long latencyMs, LocalDateTime checkedAt) {
+        this.deviceName = deviceName;
+        this.up = up;
+        this.latencyMs = latencyMs;
+        this.checkedAt = checkedAt;
+    }
+
+    public String getDeviceName() { return deviceName; }
+    public boolean isUp() { return up; }
+    public long getLatencyMs() { return latencyMs; }
+    public LocalDateTime getCheckedAt() { return checkedAt; }
+}
+</file>
+
+<file path="src/main/java/de/htwsaar/monitoring/model/Device.java">
+package de.htwsaar.monitoring.model;
+
+public class Device {
+    private String name;
+    private String host;
+    private int port;
+    private boolean enabled;
+
+    public Device(String name, String host, int port, boolean enabled) {
+        this.name = name;
+        this.host = host;
+        this.port = port;
+        this.enabled = enabled;
+    }
+
+    public String getName() { return name; }
+    public String getHost() { return host; }
+    public int getPort() { return port; }
+    public boolean isEnabled() { return enabled; }
+}
+</file>
+
+<file path="src/main/java/de/htwsaar/monitoring/scheduler/MonitoringScheduler.java">
+package de.htwsaar.monitoring.scheduler;
+
+import de.htwsaar.monitoring.service.DeviceCheckService;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MonitoringScheduler {
+
+    private final DeviceCheckService deviceCheckService;
+
+    public MonitoringScheduler(DeviceCheckService deviceCheckService) {
+        this.deviceCheckService = deviceCheckService;
+    }
+
+    @Scheduled(fixedDelayString = "${monitoring.interval:15000}")
+    public void runChecks() {
+        deviceCheckService.checkAllDevices();
+    }
+}
+</file>
+
+<file path="src/main/java/de/htwsaar/monitoring/service/DeviceCheckService.java">
+package de.htwsaar.monitoring.service;
+
+import de.htwsaar.monitoring.config.MonitoringProperties;
+import de.htwsaar.monitoring.model.CheckResult;
+import de.htwsaar.monitoring.model.Device;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.stereotype.Service;
+
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+
+@Service
+public class DeviceCheckService {
+
+    private final List<Device> devices;
+    private final MonitoringProperties properties;
+
+    private final Map<String, Double> deviceStatusMetrics =
+            new ConcurrentHashMap<>();
+
+    private final Map<String, Double> latencyMetrics =
+            new ConcurrentHashMap<>();
+
+    private final AtomicReference<List<CheckResult>> latestResults =
+            new AtomicReference<>(List.of());
+
+    public DeviceCheckService(
+            MonitoringProperties properties,
+            MeterRegistry registry
+    ) {
+        this.properties = properties;
+
+        this.devices = properties.devices()
+                .stream()
+                .map(device -> new Device(
+                        device.name(),
+                        device.host(),
+                        device.port(),
+                        device.enabled()
+                ))
+                .toList();
+
+        registerMetrics(registry);
+    }
+
+    private void registerMetrics(MeterRegistry registry) {
+        for (Device device : devices) {
+            deviceStatusMetrics.put(device.getName(), 0.0);
+            latencyMetrics.put(device.getName(), 0.0);
+
+            Gauge.builder(
+                            "network_device_up",
+                            deviceStatusMetrics,
+                            metrics -> metrics.getOrDefault(device.getName(), 0.0)
+                    )
+                    .description("Whether the network device is reachable")
+                    .tag("device", device.getName())
+                    .tag("host", device.getHost())
+                    .register(registry);
+
+            Gauge.builder(
+                            "network_device_latency_ms",
+                            latencyMetrics,
+                            metrics -> metrics.getOrDefault(device.getName(), 0.0)
+                    )
+                    .description("Latest network device check latency")
+                    .tag("device", device.getName())
+                    .tag("host", device.getHost())
+                    .register(registry);
+        }
+    }
+
+    public synchronized List<CheckResult> checkAllDevices() {
+        List<CheckResult> results = new ArrayList<>();
+
+        for (Device device : devices) {
+            if (!device.isEnabled()) {
+                continue;
+            }
+
+            CheckResult result = checkDevice(device);
+            results.add(result);
+
+            deviceStatusMetrics.put(
+                    device.getName(),
+                    result.isUp() ? 1.0 : 0.0
+            );
+
+            latencyMetrics.put(
+                    device.getName(),
+                    (double) result.getLatencyMs()
+            );
+        }
+
+        List<CheckResult> immutableResults = List.copyOf(results);
+        latestResults.set(immutableResults);
+
+        return immutableResults;
+    }
+
+    public CheckResult checkDevice(Device device) {
+        long start = System.currentTimeMillis();
+        boolean up;
+
+        try (Socket socket = new Socket()) {
+            socket.connect(
+                    new InetSocketAddress(device.getHost(), device.getPort()),
+                    (int) properties.timeout().toMillis()
+            );
+            up = true;
+        } catch (Exception exception) {
+            up = false;
+        }
+
+        long latency = System.currentTimeMillis() - start;
+
+        return new CheckResult(
+                device.getName(),
+                up,
+                latency,
+                LocalDateTime.now()
+        );
+    }
+
+    public List<CheckResult> getLatestResults() {
+        return latestResults.get();
+    }
+
+    public List<Device> getDevices() {
+        return List.copyOf(devices);
+    }
+}
+</file>
+
+<file path="src/main/resources/application.yml">
+spring:
+  application:
+    name: network-monitoring-dashboard
+
+server:
+  port: 8080
+
+monitoring:
+  interval: 15000
+  timeout: 2s
+  devices:
+    - name: Local App
+      host: app
+      port: 8080
+      enabled: true
+
+    - name: Grafana
+      host: grafana
+      port: 3000
+      enabled: true
+
+    - name: Prometheus
+      host: prometheus
+      port: 9090
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+
+  metrics:
+    tags:
+      application: ${spring.application.name}
 </file>
 
 <file path=".gitignore">
@@ -272,6 +648,81 @@ build/
 
 ### Mac OS ###
 .DS_Store
+</file>
+
+<file path="docker-compose.yml">
+services:
+  app:
+    build: .
+    container_name: network-monitoring-app
+    ports:
+      - "8080:8080"
+    networks:
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - app
+    networks:
+      - monitoring
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
+
+networks:
+  monitoring:
+</file>
+
+<file path="Dockerfile">
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY target/network-monitoring-dashboard-0.0.1-SNAPSHOT.jar app.jar
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 </file>
 
 <file path="pom.xml">
@@ -337,9 +788,14 @@ package de.htwsaar.monitoring;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
+@EnableScheduling
+@ConfigurationPropertiesScan
 public class Main {
+
     public static void main(String[] args) {
         SpringApplication.run(Main.class, args);
     }
