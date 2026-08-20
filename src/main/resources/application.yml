@@ -24,6 +24,12 @@ monitoring:
       port: 9090
       enabled: true
 
+    - name: Test Offline Device
+      host: grafana
+      port: 3000
+      enabled: true
+
+
 management:
   endpoints:
     web:

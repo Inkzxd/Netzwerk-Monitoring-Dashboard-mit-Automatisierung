@@ -1,10 +1,18 @@
-global: {}
+global:
+  resolve_timeout: 5m
 
 route:
-  receiver: default
+  receiver: spring-boot-webhook
+  group_by:
+    - alertname
+    - device
+    - host
   group_wait: 10s
   group_interval: 30s
   repeat_interval: 1h
 
 receivers:
-  - name: default
+  - name: spring-boot-webhook
+    webhook_configs:
+      - url: http://app:8080/api/alerts
+        send_resolved: true

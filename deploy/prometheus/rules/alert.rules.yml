@@ -17,7 +17,7 @@ groups:
           severity: warning
         annotations:
           summary: "Network latency is too high"
-          description: "Device {{ $labels.device }} has latency of {{ $value }} ms."
+          description: "Device {{ $labels.device }} at {{ $labels.host }} has latency of {{ $value }} ms."
 
       - alert: MonitoringTargetMissing
         expr: absent(network_device_up)
@@ -26,6 +26,7 @@ groups:
           severity: critical
         annotations:
           summary: "No network monitoring metrics available"
+          description: "Prometheus cannot find network_device_up metrics."
 
       - alert: SpringBootAppDown
         expr: up{job="spring-boot-app"} == 0
@@ -34,3 +35,4 @@ groups:
           severity: critical
         annotations:
           summary: "Spring Boot application is down"
+          description: "Prometheus cannot scrape the Spring Boot monitoring application."
