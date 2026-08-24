@@ -2,6 +2,17 @@ spring:
   application:
     name: network-monitoring-dashboard
 
+  datasource:
+    url: jdbc:sqlite:/app/data/monitoring.db
+    driver-class-name: org.sqlite.JDBC
+
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+
 server:
   port: 8080
 
@@ -25,10 +36,9 @@ monitoring:
       enabled: true
 
     - name: Test Offline Device
-      host: grafana
-      port: 3000
+      host: 192.0.2.1
+      port: 65535
       enabled: true
-
 
 management:
   endpoints:
