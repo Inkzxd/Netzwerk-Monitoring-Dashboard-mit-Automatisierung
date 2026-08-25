@@ -7,7 +7,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Service
 public class IncidentService {
@@ -25,11 +24,11 @@ public class IncidentService {
         }
 
         if ("resolved".equalsIgnoreCase(alert.status())) {
-            resolveIncident(alert);
+            resolveActiveIncident(alert);
             return;
         }
 
-        createIncidentIfMissing(alert);
+        createIncidentIfNoActiveIncidentExists(alert);
     }
 
     @Transactional(readOnly = true)
@@ -44,10 +43,17 @@ public class IncidentService {
         );
     }
 
-    private void createIncidentIfMissing(
+    private void createIncidentIfNoActiveIncidentExists(
             AlertmanagerWebhookPayload.Alert alert
     ) {
-        if (incidentRepository.findByFingerprint(alert.fingerprint()).isPresent()) {
+        boolean activeIncidentExists = incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        alert.fingerprint(),
+                        IncidentStatus.FIRING
+                )
+                .isPresent();
+
+        if (activeIncidentExists) {
             return;
         }
 
@@ -68,16 +74,17 @@ public class IncidentService {
         incidentRepository.save(incident);
     }
 
-    private void resolveIncident(AlertmanagerWebhookPayload.Alert alert) {
-        Optional<Incident> incident = incidentRepository.findByFingerprint(
-                alert.fingerprint()
-        );
-
-        incident.ifPresent(existingIncident -> {
-            if (existingIncident.getStatus() == IncidentStatus.FIRING) {
-                existingIncident.resolve(defaultResolvedTime(alert.endsAt()));
-            }
-        });
+    private void resolveActiveIncident(
+            AlertmanagerWebhookPayload.Alert alert
+    ) {
+        incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        alert.fingerprint(),
+                        IncidentStatus.FIRING
+                )
+                .ifPresent(incident -> incident.resolve(
+                        defaultResolvedTime(alert.endsAt())
+                ));
     }
 
     private Map<String, String> safeMap(Map<String, String> value) {

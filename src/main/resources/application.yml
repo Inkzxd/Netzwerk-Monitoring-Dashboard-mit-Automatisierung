@@ -36,8 +36,8 @@ monitoring:
       enabled: true
 
     - name: Test Offline Device
-      host: 192.0.2.1
-      port: 65535
+      host: grafana
+      port: 3000
       enabled: true
 
 management:

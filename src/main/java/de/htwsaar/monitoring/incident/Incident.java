@@ -8,8 +8,14 @@ import java.time.OffsetDateTime;
 @Table(
         name = "incidents",
         indexes = {
-                @Index(name = "idx_incident_fingerprint", columnList = "fingerprint"),
-                @Index(name = "idx_incident_status", columnList = "status")
+                @Index(
+                        name = "idx_incident_fingerprint_status",
+                        columnList = "fingerprint,status"
+                ),
+                @Index(
+                        name = "idx_incident_status",
+                        columnList = "status"
+                )
         }
 )
 public class Incident {
@@ -18,7 +24,7 @@ public class Incident {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 255)
+    @Column(nullable = false, length = 255)
     private String fingerprint;
 
     @Column(nullable = false, length = 255)
