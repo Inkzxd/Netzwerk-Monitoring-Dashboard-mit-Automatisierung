@@ -7,7 +7,8 @@ import java.util.Optional;
 
 public interface IncidentRepository extends JpaRepository<Incident, Long> {
 
-    Optional<Incident> findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+    Optional<Incident>
+    findFirstByFingerprintAndStatusOrderByStartedAtDesc(
             String fingerprint,
             IncidentStatus status
     );
