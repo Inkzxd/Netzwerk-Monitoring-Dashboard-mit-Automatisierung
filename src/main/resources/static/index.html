@@ -1,12 +1,142 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Network Monitoring Dashboard</title>
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<h1>Network Monitoring Dashboard</h1>
-<p>The dashboard static page is loaded successfully.</p>
-<p><a href="/api/incidents">View incidents API</a></p>
+
+<header class="topbar">
+    <div>
+        <h1>Network Monitoring Dashboard</h1>
+        <p>Device status and incident overview</p>
+    </div>
+
+    <div class="header-actions">
+        <span id="last-update">Last update: -</span>
+        <button id="run-checks-button" onclick="runChecks()">
+            Run checks
+        </button>
+    </div>
+</header>
+
+<main class="container">
+    <section class="summary-grid">
+        <article class="summary-card">
+            <span class="summary-label">Total devices</span>
+            <strong id="total-devices">0</strong>
+        </article>
+
+        <article class="summary-card success-card">
+            <span class="summary-label">Online</span>
+            <strong id="online-devices">0</strong>
+        </article>
+
+        <article class="summary-card danger-card">
+            <span class="summary-label">Offline</span>
+            <strong id="offline-devices">0</strong>
+        </article>
+
+        <article class="summary-card warning-card">
+            <span class="summary-label">Active incidents</span>
+            <strong id="active-incidents">0</strong>
+        </article>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Current device status</h2>
+                <p>Latest TCP connectivity checks</p>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                <tr>
+                    <th>Device</th>
+                    <th>Status</th>
+                    <th>Latency</th>
+                    <th>Last checked</th>
+                </tr>
+                </thead>
+                <tbody id="device-table-body">
+                <tr>
+                    <td colspan="4" class="empty-state">
+                        Loading devices...
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Active incidents</h2>
+                <p>Currently unresolved alerts</p>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Alert</th>
+                    <th>Device</th>
+                    <th>Started</th>
+                    <th>Description</th>
+                </tr>
+                </thead>
+                <tbody id="active-incident-table-body">
+                <tr>
+                    <td colspan="5" class="empty-state">
+                        Loading incidents...
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Incident history</h2>
+                <p>Previously detected incidents</p>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Alert</th>
+                    <th>Device</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Resolved</th>
+                    <th>Duration</th>
+                </tr>
+                </thead>
+                <tbody id="incident-table-body">
+                <tr>
+                    <td colspan="7" class="empty-state">
+                        Loading history...
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script src="/app.js"></script>
 </body>
 </html>
