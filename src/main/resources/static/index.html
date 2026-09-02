@@ -135,6 +135,35 @@
             </table>
         </div>
     </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Network bandwidth</h2>
+                <p>Estimated usage per monitored device</p>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                <tr>
+                    <th>Device</th>
+                    <th>Host</th>
+                    <th>Usage</th>
+                    <th>Capacity</th>
+                </tr>
+                </thead>
+                <tbody id="bandwidth-table-body">
+                <tr>
+                    <td colspan="4" class="empty-state">
+                        Loading bandwidth data...
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </main>
 
 <script src="/app.js"></script>

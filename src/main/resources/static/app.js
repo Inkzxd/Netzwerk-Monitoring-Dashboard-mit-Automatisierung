@@ -11,18 +11,21 @@ async function refreshDashboard() {
             devices,
             checks,
             activeIncidents,
-            incidents
+            incidents,
+            bandwidthMetrics
         ] = await Promise.all([
             fetchJson("/api/devices"),
             fetchJson("/api/checks/latest"),
             fetchJson("/api/incidents/active"),
-            fetchJson("/api/incidents")
+            fetchJson("/api/incidents"),
+            fetchJson("/api/metrics/bandwidth")
         ]);
 
         renderSummary(devices, checks, activeIncidents);
         renderDevices(devices, checks);
         renderActiveIncidents(activeIncidents);
         renderIncidentHistory(incidents);
+        renderBandwidthMetrics(bandwidthMetrics);
 
         document.getElementById("last-update").textContent =
             `Last update: ${new Date().toLocaleString()}`;
@@ -148,6 +151,24 @@ function renderIncidentHistory(incidents) {
     if (!incidents.length) {
         body.innerHTML = emptyRow(7, "No incident history.");
         return;
+    }
+
+    function renderBandwidthMetrics(metrics) {
+        const body = document.getElementById("bandwidth-table-body");
+
+        if (!metrics.length) {
+            body.innerHTML = emptyRow(4, "No bandwidth data available.");
+            return;
+        }
+
+        body.innerHTML = metrics.map(metric => `
+            <tr>
+                <td>${escapeHtml(metric.deviceName)}</td>
+                <td>${escapeHtml(metric.host)}</td>
+                <td>${metric.usagePercent.toFixed(1)}%</td>
+                <td>${metric.capacityMbps.toFixed(0)} Mbps</td>
+            </tr>
+        `).join("");
     }
 
     body.innerHTML = incidents.map(incident => `
@@ -281,6 +302,11 @@ function showErrorState() {
 
     document.getElementById("incident-table-body").innerHTML =
         emptyRow(7, "Could not load incident history.");
+
+    const bandwidthBody = document.getElementById("bandwidth-table-body");
+    if (bandwidthBody) {
+        bandwidthBody.innerHTML = emptyRow(4, "Could not load bandwidth data.");
+    }
 }
 
 function escapeHtml(value) {

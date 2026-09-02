@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -26,6 +27,12 @@ public class DeviceCheckService {
             new ConcurrentHashMap<>();
 
     private final Map<String, Double> latencyMetrics =
+            new ConcurrentHashMap<>();
+
+    private final Map<String, Double> bandwidthUsageMetrics =
+            new ConcurrentHashMap<>();
+
+    private final Map<String, Double> bandwidthCapacityMetrics =
             new ConcurrentHashMap<>();
 
     private final AtomicReference<List<CheckResult>> latestResults =
@@ -54,6 +61,8 @@ public class DeviceCheckService {
         for (Device device : devices) {
             deviceStatusMetrics.put(device.getName(), 0.0);
             latencyMetrics.put(device.getName(), 0.0);
+            bandwidthUsageMetrics.put(device.getName(), 0.0);
+            bandwidthCapacityMetrics.put(device.getName(), 1000.0);
 
             Gauge.builder(
                             "network_device_up",
@@ -61,6 +70,26 @@ public class DeviceCheckService {
                             metrics -> metrics.getOrDefault(device.getName(), 0.0)
                     )
                     .description("Whether the network device is reachable")
+                    .tag("device", device.getName())
+                    .tag("host", device.getHost())
+                    .register(registry);
+
+            Gauge.builder(
+                            "network_device_bandwidth_usage_percent",
+                            bandwidthUsageMetrics,
+                            metrics -> metrics.getOrDefault(device.getName(), 0.0)
+                    )
+                    .description("Simulated bandwidth usage for the monitored device")
+                    .tag("device", device.getName())
+                    .tag("host", device.getHost())
+                    .register(registry);
+
+            Gauge.builder(
+                            "network_device_bandwidth_capacity_mbps",
+                            bandwidthCapacityMetrics,
+                            metrics -> metrics.getOrDefault(device.getName(), 1000.0)
+                    )
+                    .description("Configured bandwidth capacity for the monitored device")
                     .tag("device", device.getName())
                     .tag("host", device.getHost())
                     .register(registry);
@@ -96,6 +125,11 @@ public class DeviceCheckService {
             latencyMetrics.put(
                     device.getName(),
                     (double) result.getLatencyMs()
+            );
+
+            bandwidthUsageMetrics.put(
+                    device.getName(),
+                    calculateBandwidthUsage(device, result)
             );
         }
 
@@ -135,5 +169,24 @@ public class DeviceCheckService {
 
     public List<Device> getDevices() {
         return List.copyOf(devices);
+    }
+
+    public double getBandwidthUsagePercent(String deviceName) {
+        return bandwidthUsageMetrics.getOrDefault(deviceName, 0.0);
+    }
+
+    public double getBandwidthCapacityMbps(String deviceName) {
+        return bandwidthCapacityMetrics.getOrDefault(deviceName, 1000.0);
+    }
+
+    private double calculateBandwidthUsage(Device device, CheckResult result) {
+        if (!result.isUp()) {
+            return 0.0;
+        }
+
+        double base = 15.0 + (result.getLatencyMs() * 0.8);
+        double randomOffset = ThreadLocalRandom.current().nextDouble(0.0, 25.0);
+        double deviceOffset = Math.abs(device.getName().hashCode() % 20);
+        return Math.min(100.0, base + randomOffset + deviceOffset);
     }
 }

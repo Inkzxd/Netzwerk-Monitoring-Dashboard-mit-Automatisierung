@@ -10,7 +10,11 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
+
+import de.htwsaar.monitoring.service.DeviceCheckService;
+import de.htwsaar.monitoring.model.BandwidthMetric;
 
 /**
  * REST controller that provides endpoints for monitoring the status of the application.
@@ -21,6 +25,12 @@ import java.util.Map;
  */
 @RestController
 public class MonitoringController {
+
+    private final DeviceCheckService deviceCheckService;
+
+    public MonitoringController(DeviceCheckService deviceCheckService) {
+        this.deviceCheckService = deviceCheckService;
+    }
 
     /**
      * Returns the current status of the monitoring service.
@@ -33,5 +43,17 @@ public class MonitoringController {
                 "timestamp", LocalDateTime.now().toString(),
                 "service", "network-monitoring-dashboard"
         );
+    }
+
+    @GetMapping("/api/metrics/bandwidth")
+    public List<BandwidthMetric> bandwidthMetrics() {
+        return deviceCheckService.getDevices().stream()
+                .map(device -> new BandwidthMetric(
+                        device.getName(),
+                        device.getHost(),
+                        deviceCheckService.getBandwidthUsagePercent(device.getName()),
+                        deviceCheckService.getBandwidthCapacityMbps(device.getName())
+                ))
+                .toList();
     }
 }
