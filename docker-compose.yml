@@ -1,72 +1,122 @@
+# Docker Compose stack for the Network-Monitoring Dashboard.
+# It starts four services:
+# - app: Spring Boot backend that exposes monitoring metrics and APIs
+# - prometheus: collects/scrapes metrics and evaluates alerting rules
+# - alertmanager: receives alerts from Prometheus and routes notifications/webhooks
+# - grafana: visualizes metrics and dashboards
+#
+# Named volumes are used to persist data across container restarts.
+# A dedicated bridge network (`monitoring`) enables service-to-service communication.
+
 services:
+  # Main application service (Spring Boot).
   app:
+    # Build image from the local Dockerfile in the project root.
     build: .
+    # Fixed container name for easier local referencing.
     container_name: network-monitoring-app
+    # Expose application HTTP endpoint on host port 8080.
     ports:
       - "8080:8080"
     environment:
+      # Set container timezone to keep logs/alerts in local time.
       TZ: Europe/Berlin
     volumes:
+      # Persist application data directory in a named Docker volume.
       - monitoring_data:/app/data
     networks:
+      # Attach to shared monitoring network.
       - monitoring
 
+  # Prometheus metrics collection and alert evaluation service.
   prometheus:
+    # Official Prometheus image (pinned version).
     image: prom/prometheus:v2.54.1
     container_name: prometheus
     command:
+      # Use mounted Prometheus configuration file.
       - --config.file=/etc/prometheus/prometheus.yml
+      # Store TSDB data in mounted persistent volume path.
       - --storage.tsdb.path=/prometheus
+      # Enable HTTP reload endpoint for configuration updates.
       - --web.enable-lifecycle
+    # Expose Prometheus UI/API on host port 9090.
     ports:
       - "9090:9090"
     volumes:
+      # Mount main Prometheus config as read-only.
       - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Mount alerting/recording rules directory as read-only.
       - ./deploy/prometheus/rules:/etc/prometheus/rules:ro
+      # Persist Prometheus time-series database data.
       - prometheus_data:/prometheus
     depends_on:
+      # Start after app container is created (does not guarantee app readiness).
       - app
     networks:
       - monitoring
 
+  # Alertmanager service for handling and routing Prometheus alerts.
   alertmanager:
+    # Official Alertmanager image (pinned version).
     image: prom/alertmanager:v0.27.0
     container_name: alertmanager
     command:
+      # Use mounted Alertmanager configuration file.
       - --config.file=/etc/alertmanager/alertmanager.yml
+      # Persist Alertmanager state/silences under this path.
       - --storage.path=/alertmanager
+    # Expose Alertmanager UI/API on host port 9093.
     ports:
       - "9093:9093"
     volumes:
+      # Mount Alertmanager config as read-only.
       - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Persist Alertmanager runtime data.
       - alertmanager_data:/alertmanager
     networks:
       - monitoring
 
+  # Grafana visualization service.
   grafana:
+    # Official Grafana image (pinned version).
     image: grafana/grafana:11.1.0
     container_name: grafana
+    # Expose Grafana web UI on host port 3000.
     ports:
       - "3000:3000"
     environment:
+      # Default admin login credentials for local/dev usage.
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
+      # Disable self-service account creation.
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # Keep Grafana timestamps aligned with local timezone.
       TZ: Europe/Berlin
     volumes:
+      # Persist Grafana database/plugins and runtime data.
       - grafana_data:/var/lib/grafana
+      # Provision data sources/dashboards providers automatically.
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Provide dashboard JSON files for provisioning.
       - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
+      # Start after Prometheus container is created.
       - prometheus
     networks:
       - monitoring
 
+# Named volumes declaration for persistent service data.
 volumes:
+  # Stores app data mounted at /app/data.
   monitoring_data:
+  # Stores Prometheus TSDB data.
   prometheus_data:
+  # Stores Alertmanager state and silences.
   alertmanager_data:
+  # Stores Grafana internal DB and related data.
   grafana_data:
 
+# User-defined network for internal communication between all services.
 networks:
   monitoring:

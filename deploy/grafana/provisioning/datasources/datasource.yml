@@ -1,8 +1,15 @@
+# Grafana provisioning API version for datasource configuration
 apiVersion: 1
 
+# List of datasources to provision
 datasources:
+  # Prometheus datasource definition
   - name: Prometheus
+    # Datasource plugin type
     type: prometheus
+    # Route requests through the Grafana backend/proxy
     access: proxy
+    # Prometheus server URL inside the Docker/network environment
     url: http://prometheus:9090
+    # Make this the default datasource in Grafana
     isDefault: true
