@@ -1,28 +1,12 @@
-# Grafana provisioning API version
 apiVersion: 1
 
-# List of dashboard providers Grafana should load
 providers:
-  # Provider configuration for network monitoring dashboards
-  - name: Network Monitoring
-
-    # Grafana organization ID where dashboards will be imported
+  - name: "Network Monitoring"
     orgId: 1
-
-    # Folder in Grafana where dashboards will be placed
-    folder: Network Monitoring
-
-    # Provider type: loads dashboards from files on disk
+    folder: "Network Monitoring"
     type: file
-
-    # If false, dashboards removed from disk are also removed from Grafana
     disableDeletion: false
-
-    # Allows dashboards to be edited in the Grafana UI
     editable: true
-
-    # File provider-specific options
+    updateIntervalSeconds: 10
     options:
-
-    # Directory containing dashboard JSON files
-    path: /var/lib/grafana/dashboards
+      path: "/var/lib/grafana/dashboards"

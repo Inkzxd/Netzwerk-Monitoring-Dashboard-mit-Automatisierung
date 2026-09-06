@@ -106,6 +106,12 @@ services:
     networks:
       - monitoring
 
+  demo-service:
+      image: nginx:1.27-alpine
+      container_name: demo-service
+      networks:
+        - monitoring
+
 # Named volumes declaration for persistent service data.
 volumes:
   # Stores app data mounted at /app/data.
