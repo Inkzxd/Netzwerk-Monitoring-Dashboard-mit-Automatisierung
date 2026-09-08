@@ -40,6 +40,11 @@ public record MonitoringProperties(
      */
     public record DeviceProperties(
             /**
+             * Stable identifier for the device (used in metrics and APIs).
+             */
+            String id,
+
+            /**
              * Display name of the device.
              */
             String name,
@@ -59,5 +64,13 @@ public record MonitoringProperties(
              */
             boolean enabled
     ) {
+        /**
+         * If no ID is provided, fall back to the name.
+         */
+        public DeviceProperties {
+            if (id == null || id.isBlank()) {
+                id = name;
+            }
+        }
     }
 }

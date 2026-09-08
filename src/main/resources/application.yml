@@ -21,24 +21,28 @@ monitoring:
   timeout: 2s
 
   devices:
-    - name: Monitoring Application
+    - id: app
+      name: Monitoring Application
       host: app
       port: 8080
       enabled: true
 
-    - name: Prometheus
+    - id: prometheus
+      name: Prometheus
       host: prometheus
       port: 9090
       enabled: true
 
-    - name: Grafana
+    - id: grafana
+      name: Grafana
       host: grafana
       port: 3000
       enabled: true
 
-    - name: Demo Service
-      host: grafana
-      port: 3000
+    - id: demo
+      name: Demo Service
+      host: demo-service
+      port: 80
       enabled: true
 
 management:

@@ -6,6 +6,11 @@ package de.htwsaar.monitoring.model;
 public class Device {
 
     /**
+     * Stable identifier for the device.
+     */
+    private String id;
+
+    /**
      * Human-readable device name.
      */
     private String name;
@@ -28,43 +33,37 @@ public class Device {
     /**
      * Creates a new monitored device.
      *
+     * @param id stable identifier for the device
      * @param name human-readable device name
      * @param host hostname or IP address of the device
      * @param port network port used to check the device
      * @param enabled whether monitoring is enabled for this device
      */
-    public Device(String name, String host, int port, boolean enabled) {
+    public Device(String id, String name, String host, int port, boolean enabled) {
+        this.id = id;
         this.name = name;
         this.host = host;
         this.port = port;
         this.enabled = enabled;
     }
 
-    /**
-     * Returns the device name.
-     *
-     * @return human-readable device name
-     */
-    public String getName() { return name; }
+    public String getId() {
+        return id;
+    }
 
-    /**
-     * Returns the device host.
-     *
-     * @return hostname or IP address
-     */
-    public String getHost() { return host; }
+    public String getName() {
+        return name;
+    }
 
-    /**
-     * Returns the device port.
-     *
-     * @return network port
-     */
-    public int getPort() { return port; }
+    public String getHost() {
+        return host;
+    }
 
-    /**
-     * Returns whether monitoring is enabled for this device.
-     *
-     * @return {@code true} if monitoring is enabled, otherwise {@code false}
-     */
-    public boolean isEnabled() { return enabled; }
+    public int getPort() {
+        return port;
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
 }

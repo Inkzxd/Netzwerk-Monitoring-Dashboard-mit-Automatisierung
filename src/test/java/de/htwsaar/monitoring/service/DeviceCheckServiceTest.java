@@ -20,10 +20,11 @@ class DeviceCheckServiceTest {
                         Duration.ofMillis(100),
                         List.of(
                                 new MonitoringProperties.DeviceProperties(
-                                        "Test Device",
-                                        "localhost",
-                                        8080,
-                                        true
+                                        "test-device",   // id
+                                        "Test Device",   // name
+                                        "localhost",     // host
+                                        8080,           // port
+                                        true            // enabled
                                 )
                         )
                 );
@@ -31,7 +32,8 @@ class DeviceCheckServiceTest {
         DeviceCheckService service =
                 new DeviceCheckService(
                         properties,
-                        new SimpleMeterRegistry()
+                        new SimpleMeterRegistry(),
+                        null // CheckResultRepository not used in this test
                 );
 
         assertEquals(1, service.getDevices().size());
@@ -52,15 +54,17 @@ class DeviceCheckServiceTest {
         DeviceCheckService service =
                 new DeviceCheckService(
                         properties,
-                        new SimpleMeterRegistry()
+                        new SimpleMeterRegistry(),
+                        null // CheckResultRepository not used in this test
                 );
 
         Device device =
                 new Device(
-                        "Invalid Device",
-                        "192.0.2.1",
-                        65500,
-                        true
+                        "invalid-device", // id
+                        "Invalid Device",  // name
+                        "192.0.2.1",       // host
+                        65500,            // port
+                        true              // enabled
                 );
 
         CheckResult result = service.checkDevice(device);

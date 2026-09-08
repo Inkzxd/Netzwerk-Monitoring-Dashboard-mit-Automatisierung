@@ -2,17 +2,19 @@ package de.htwsaar.monitoring.service;
 
 import de.htwsaar.monitoring.config.MonitoringProperties;
 import de.htwsaar.monitoring.model.CheckResult;
+import de.htwsaar.monitoring.model.CheckResultEntity;
+import de.htwsaar.monitoring.model.CheckResultRepository;
 import de.htwsaar.monitoring.model.Device;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -35,13 +37,13 @@ public class DeviceCheckService {
     /**
      * Metric values indicating whether each device is currently reachable.
      */
-    private final Map<String, Double> deviceStatusMetrics =
+    private final java.util.Map<String, Double> deviceStatusMetrics =
             new ConcurrentHashMap<>();
 
     /**
      * Metric values containing the latest measured latency for each device.
      */
-    private final Map<String, Double> latencyMetrics =
+    private final java.util.Map<String, Double> latencyMetrics =
             new ConcurrentHashMap<>();
 
     /**
@@ -51,20 +53,30 @@ public class DeviceCheckService {
             new AtomicReference<>(List.of());
 
     /**
+     * Repository to persist check results. May be null in tests.
+     */
+    private final CheckResultRepository checkResultRepository;
+
+    /**
      * Creates a new device check service and registers device metrics.
      *
      * @param properties monitoring configuration properties
      * @param registry meter registry used to publish Micrometer metrics
+     * @param checkResultRepository repository to persist check results (may be null in tests)
      */
     public DeviceCheckService(
             MonitoringProperties properties,
-            MeterRegistry registry
+            MeterRegistry registry,
+            CheckResultRepository checkResultRepository
     ) {
         this.properties = properties;
+        this.checkResultRepository = checkResultRepository;
 
+        // Map DeviceProperties (with id) to internal Device model (with id)
         this.devices = properties.devices()
                 .stream()
                 .map(device -> new Device(
+                        device.id(),        // stable ID
                         device.name(),
                         device.host(),
                         device.port(),
@@ -91,7 +103,8 @@ public class DeviceCheckService {
                             metrics -> metrics.getOrDefault(device.getName(), 0.0)
                     )
                     .description("Whether the network device is reachable")
-                    .tag("device", device.getName())
+                    .tag("device_id", device.getId())
+                    .tag("device_name", device.getName())
                     .tag("host", device.getHost())
                     .register(registry);
 
@@ -101,7 +114,8 @@ public class DeviceCheckService {
                             metrics -> metrics.getOrDefault(device.getName(), 0.0)
                     )
                     .description("Latest network device check latency")
-                    .tag("device", device.getName())
+                    .tag("device_id", device.getId())
+                    .tag("device_name", device.getName())
                     .tag("host", device.getHost())
                     .register(registry);
         }
@@ -109,9 +123,11 @@ public class DeviceCheckService {
 
     /**
      * Checks all enabled devices and updates the latest results and metrics.
+     * Also persists each check result to the database if the repository is available.
      *
      * @return immutable list of check results for enabled devices
      */
+    @Transactional
     public synchronized List<CheckResult> checkAllDevices() {
         List<CheckResult> results = new ArrayList<>();
 
@@ -132,6 +148,19 @@ public class DeviceCheckService {
                     device.getName(),
                     (double) result.getLatencyMs()
             );
+
+            // Persist check result if repository is available
+            if (checkResultRepository != null) {
+                CheckResultEntity entity = new CheckResultEntity(
+                        result.getDeviceName(),
+                        device.getHost(),
+                        result.isUp(),
+                        result.getLatencyMs(),
+                        result.getCheckedAt(),
+                        null
+                );
+                checkResultRepository.save(entity);
+            }
         }
 
         List<CheckResult> immutableResults = List.copyOf(results);
@@ -186,5 +215,26 @@ public class DeviceCheckService {
      */
     public List<Device> getDevices() {
         return List.copyOf(devices);
+    }
+
+    /**
+     * Deletes check results older than the given timestamp.
+     * Does nothing if the repository is not available.
+     *
+     * @param before delete all results with checkedAt before this timestamp
+     */
+    @Transactional
+    public void deleteOldCheckResults(LocalDateTime before) {
+        if (checkResultRepository == null) {
+            return;
+        }
+
+        List<CheckResultEntity> all = checkResultRepository.findAllByOrderByCheckedAtDesc();
+        List<CheckResultEntity> toDelete = all.stream()
+                .filter(e -> e.getCheckedAt().isBefore(before))
+                .toList();
+        if (!toDelete.isEmpty()) {
+            checkResultRepository.deleteAll(toDelete);
+        }
     }
 }
