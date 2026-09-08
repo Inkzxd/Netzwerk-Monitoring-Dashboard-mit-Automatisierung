@@ -20,6 +20,8 @@ monitoring:
   interval: 15000
   timeout: 2s
 
+  alert-secret: ${ALERTMANAGER_WEBHOOK_SECRET:change-me-alert-secret}
+
   devices:
     - id: app
       name: Monitoring Application

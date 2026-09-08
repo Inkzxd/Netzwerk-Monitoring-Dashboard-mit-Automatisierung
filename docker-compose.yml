@@ -19,6 +19,7 @@ services:
       # Read from .env file; fallback to defaults if not set
       APP_ADMIN_USER: ${APP_ADMIN_USER:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-change-me-in-production}
+      ALERTMANAGER_WEBHOOK_SECRET: ${ALERTMANAGER_WEBHOOK_SECRET:-change-me-alert-secret}
     volumes:
       - monitoring_data:/app/data
     networks:
@@ -88,12 +89,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Default admin login credentials for local/dev usage.
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      # Disable self-service account creation.
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana-password}
       GF_USERS_ALLOW_SIGN_UP: "false"
-      # Keep Grafana timestamps aligned with local timezone.
       TZ: Europe/Berlin
     volumes:
       # Persist Grafana database/plugins and runtime data.

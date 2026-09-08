@@ -18,6 +18,7 @@ class DeviceCheckServiceTest {
         MonitoringProperties properties =
                 new MonitoringProperties(
                         Duration.ofMillis(100),
+                        "test-secret",
                         List.of(
                                 new MonitoringProperties.DeviceProperties(
                                         "test-device",   // id
@@ -48,6 +49,7 @@ class DeviceCheckServiceTest {
         MonitoringProperties properties =
                 new MonitoringProperties(
                         Duration.ofMillis(100),
+                        "test-secret",
                         List.of()
                 );
 

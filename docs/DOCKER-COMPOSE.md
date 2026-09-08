@@ -21,7 +21,7 @@ All services are connected to the internal `monitoring` network and can reach on
                               (Prometheus datasource)
 ```
 
-Prometheus scrapes the application every 15 seconds. Alert rules are loaded from `deploy/prometheus/rules`, and Alertmanager sends alert notifications back to the application at `http://app:8080/api/alerts`. Grafana is provisioned with Prometheus as its default datasource and loads dashboards from `deploy/grafana/dashboards`.
+Prometheus scrapes the application every 15 seconds. Alert rules are loaded from `../deploy/prometheus/rules`, and Alertmanager sends alert notifications back to the application at `http://app:8080/api/alerts`. Grafana is provisioned with Prometheus as its default datasource and loads dashboards from `deploy/grafana/dashboards`.
 
 ## Services and ports
 
@@ -41,7 +41,7 @@ The ports are mapped from the host to the same port inside each container:
 
 ## Start the stack
 
-Run these commands from the directory containing `docker-compose.yml`:
+Run these commands from the directory containing `../docker-compose.yml`:
 
 ```bash
 docker compose up --build -d
@@ -77,15 +77,15 @@ The following named volumes preserve data across container recreation:
 | `alertmanager_data` | `/alertmanager` | Alertmanager state |
 | `grafana_data` | `/var/lib/grafana` | Grafana users and settings |
 
-Configuration files and dashboards are bind-mounted read-only from `deploy/`, so changes to those files can be reviewed and versioned in the project.
+Configuration files and dashboards are bind-mounted read-only from `../deploy`, so changes to those files can be reviewed and versioned in the project.
 
 ## Configuration details
 
 - The application uses timezone `Europe/Berlin` and listens on port `8080`.
-- Prometheus reads `deploy/prometheus/prometheus.yml` and the rule files in `deploy/prometheus/rules`.
+- Prometheus reads `../deploy/prometheus/prometheus.yml` and the rule files in `deploy/prometheus/rules`.
 - Prometheus targets the application internally as `app:8080`, using `/actuator/prometheus`.
-- Alertmanager reads `deploy/alertmanager/alertmanager.yml` and sends resolved as well as firing alerts to the application webhook.
-- Grafana reads provisioning files from `deploy/grafana/provisioning` and dashboards from `deploy/grafana/dashboards`.
+- Alertmanager reads `../deploy/alertmanager/alertmanager.yml` and sends resolved as well as firing alerts to the application webhook.
+- Grafana reads provisioning files from `../deploy/grafana/provisioning` and dashboards from `deploy/grafana/dashboards`.
 - Service-to-service URLs must use Compose service names such as `prometheus:9090` and `grafana:3000`; `localhost` refers to the current container, not another service.
 
 ## Grafana login

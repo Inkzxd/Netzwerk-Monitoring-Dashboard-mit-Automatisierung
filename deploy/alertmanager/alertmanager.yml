@@ -1,36 +1,25 @@
 # Global Alertmanager settings.
 global:
-  # How long Alertmanager waits before marking an alert as resolved
-  # if it has not received an updated firing alert.
   resolve_timeout: 5m
 
-# Defines how incoming alerts are grouped and routed to receivers.
 route:
-  # Default receiver for all alerts handled by this route.
   receiver: spring-boot-webhook
 
-  # Labels used to group related alerts into a single notification.
   group_by:
     - alertname
     - device
     - host
 
-  # Wait time before sending the first notification for a new alert group.
   group_wait: 10s
-
-  # Minimum wait time before sending additional alerts for an existing group.
   group_interval: 30s
-
-  # How often to resend notifications for alerts that are still firing.
   repeat_interval: 1h
 
-# Notification targets that Alertmanager can send alerts to.
 receivers:
-  # Receiver that forwards alerts to the Spring Boot application.
   - name: spring-boot-webhook
     webhook_configs:
-      # Webhook endpoint exposed by the Spring Boot application.
       - url: http://app:8080/api/alerts
-
-        # Also send notifications when alerts are resolved.
         send_resolved: true
+        http_config:
+          basic_auth:
+            username: admin
+            password: your-strong-application-password

@@ -7,8 +7,6 @@ import java.util.List;
 
 /**
  * Configuration properties for the monitoring module.
- *
- * <p>Values are bound from properties with the {@code monitoring} prefix.</p>
  */
 @ConfigurationProperties(prefix = "monitoring")
 public record MonitoringProperties(
@@ -18,16 +16,26 @@ public record MonitoringProperties(
         Duration timeout,
 
         /**
+         * Shared secret used to authenticate Alertmanager webhooks.
+         */
+        String alertSecret,
+
+        /**
          * Configured devices that should be monitored.
          */
         List<DeviceProperties> devices
 ) {
+
     /**
      * Applies default values when optional configuration entries are missing.
      */
     public MonitoringProperties {
         if (timeout == null) {
             timeout = Duration.ofSeconds(2);
+        }
+
+        if (alertSecret == null || alertSecret.isBlank()) {
+            alertSecret = "change-me-alert-secret";
         }
 
         if (devices == null) {
@@ -40,7 +48,7 @@ public record MonitoringProperties(
      */
     public record DeviceProperties(
             /**
-             * Stable identifier for the device (used in metrics and APIs).
+             * Stable identifier for the device.
              */
             String id,
 
@@ -65,7 +73,7 @@ public record MonitoringProperties(
             boolean enabled
     ) {
         /**
-         * If no ID is provided, fall back to the name.
+         * Uses the device name as fallback when no ID is configured.
          */
         public DeviceProperties {
             if (id == null || id.isBlank()) {

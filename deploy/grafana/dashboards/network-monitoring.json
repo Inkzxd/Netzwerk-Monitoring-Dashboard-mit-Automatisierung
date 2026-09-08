@@ -194,7 +194,7 @@
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "{{device}}",
+          "legendFormat": "{{device_name}}",
           "range": true,
           "refId": "A",
           "useBackend": false
