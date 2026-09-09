@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+.idea
+.vscode
+*.iml
+.DS_Store
+
+target
+*.log
+
+repomix-output.xml
+node_modules

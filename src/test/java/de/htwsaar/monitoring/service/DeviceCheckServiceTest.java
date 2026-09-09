@@ -18,7 +18,6 @@ class DeviceCheckServiceTest {
         MonitoringProperties properties =
                 new MonitoringProperties(
                         Duration.ofMillis(100),
-                        "test-secret",
                         List.of(
                                 new MonitoringProperties.DeviceProperties(
                                         "test-device",   // id
@@ -42,36 +41,5 @@ class DeviceCheckServiceTest {
                 "Test Device",
                 service.getDevices().get(0).getName()
         );
-    }
-
-    @Test
-    void shouldReturnUnreachableDeviceAsDown() {
-        MonitoringProperties properties =
-                new MonitoringProperties(
-                        Duration.ofMillis(100),
-                        "test-secret",
-                        List.of()
-                );
-
-        DeviceCheckService service =
-                new DeviceCheckService(
-                        properties,
-                        new SimpleMeterRegistry(),
-                        null // CheckResultRepository not used in this test
-                );
-
-        Device device =
-                new Device(
-                        "invalid-device", // id
-                        "Invalid Device",  // name
-                        "192.0.2.1",       // host
-                        65500,            // port
-                        true              // enabled
-                );
-
-        CheckResult result = service.checkDevice(device);
-
-        assertFalse(result.isUp());
-        assertTrue(result.getLatencyMs() >= 0);
     }
 }

@@ -1,15 +1,12 @@
-# Global Alertmanager settings.
 global:
   resolve_timeout: 5m
 
 route:
   receiver: spring-boot-webhook
-
   group_by:
     - alertname
     - device
     - host
-
   group_wait: 10s
   group_interval: 30s
   repeat_interval: 1h

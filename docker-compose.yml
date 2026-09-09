@@ -1,128 +1,152 @@
-# Docker Compose stack for the Network-Monitoring Dashboard.
-# It starts four services:
-# - app: Spring Boot backend that exposes monitoring metrics and APIs
-# - prometheus: collects/scrapes metrics and evaluates alerting rules
-# - alertmanager: receives alerts from Prometheus and routes notifications/webhooks
-# - grafana: visualizes metrics and dashboards
-#
-# Named volumes are used to persist data across container restarts.
-# A dedicated bridge network (`monitoring`) enables service-to-service communication.
-
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: network-monitoring-app
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
       TZ: Europe/Berlin
-      # Read from .env file; fallback to defaults if not set
       APP_ADMIN_USER: ${APP_ADMIN_USER:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-change-me-in-production}
-      ALERTMANAGER_WEBHOOK_SECRET: ${ALERTMANAGER_WEBHOOK_SECRET:-change-me-alert-secret}
     volumes:
       - monitoring_data:/app/data
     networks:
       - monitoring
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "--quiet",
+          "http://localhost:8080/actuator/health"
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 40s
 
-  # Prometheus metrics collection and alert evaluation service.
   prometheus:
-    # Official Prometheus image (pinned version).
     image: prom/prometheus:v2.54.1
     container_name: prometheus
+    restart: unless-stopped
     command:
-      # Use mounted Prometheus configuration file.
-      - --config.file=/etc/prometheus/prometheus.yml
-      # Store TSDB data in mounted persistent volume path.
-      - --storage.tsdb.path=/prometheus
-      # Enable HTTP reload endpoint for configuration updates.
-      - --web.enable-lifecycle
-    # Expose Prometheus UI/API on host port 9090.
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
     ports:
       - "9090:9090"
     volumes:
-      # Mount main Prometheus config as read-only.
       - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      # Mount alerting/recording rules directory as read-only.
       - ./deploy/prometheus/rules:/etc/prometheus/rules:ro
-      # Persist Prometheus time-series database data.
       - prometheus_data:/prometheus
-    depends_on:
-      # Start after app container is created (does not guarantee app readiness).
-      - app
     networks:
       - monitoring
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "--quiet",
+          "http://localhost:9090/-/healthy"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  # Alertmanager service for handling and routing Prometheus alerts.
   alertmanager:
-    # Official Alertmanager image (pinned version).
     image: prom/alertmanager:v0.27.0
     container_name: alertmanager
+    restart: unless-stopped
     command:
-      # Use mounted Alertmanager configuration file.
-      - --config.file=/etc/alertmanager/alertmanager.yml
-      # Persist Alertmanager state/silences under this path.
-      - --storage.path=/alertmanager
-    # Expose Alertmanager UI/API on host port 9093.
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
     ports:
       - "9093:9093"
     volumes:
-      # Mount Alertmanager config as read-only.
       - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      # Persist Alertmanager runtime data.
       - alertmanager_data:/alertmanager
     networks:
       - monitoring
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "--quiet",
+          "http://localhost:9093/-/healthy"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  # Grafana visualization service.
   grafana:
-    # Official Grafana image (pinned version).
     image: grafana/grafana:11.1.0
     container_name: grafana
-    # Expose Grafana web UI on host port 3000.
-    ports:
-      - "3000:3000"
+    restart: unless-stopped
     environment:
+      TZ: Europe/Berlin
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana-password}
       GF_USERS_ALLOW_SIGN_UP: "false"
-      TZ: Europe/Berlin
+    ports:
+      - "3000:3000"
     volumes:
-      # Persist Grafana database/plugins and runtime data.
       - grafana_data:/var/lib/grafana
-      # Provision data sources/dashboards providers automatically.
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
-      # Provide dashboard JSON files for provisioning.
       - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    depends_on:
-      # Start after Prometheus container is created.
-      - prometheus
     networks:
       - monitoring
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --spider --quiet http://localhost:3000/api/health || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   demo-service:
-      image: nginx:1.27-alpine
-      container_name: demo-service
-      networks:
-        - monitoring
+    image: nginx:1.27-alpine
+    container_name: demo-service
+    restart: unless-stopped
+    networks:
+      - monitoring
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --spider --quiet http://localhost:80/ || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-# Named volumes declaration for persistent service data.
-volumes:
-  # Stores app data mounted at /app/data.
-  monitoring_data:
-  # Stores Prometheus TSDB data.
-  prometheus_data:
-  # Stores Alertmanager state and silences.
-  alertmanager_data:
-  # Stores Grafana internal DB and related data.
-  grafana_data:
-
-# User-defined network for internal communication between all services.
 networks:
   monitoring:
+    driver: bridge
+
+volumes:
+  monitoring_data:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
