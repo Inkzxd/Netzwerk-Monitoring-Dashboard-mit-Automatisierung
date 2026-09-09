@@ -1,6 +1,8 @@
 package de.htwsaar.monitoring.incident;
 
 import de.htwsaar.monitoring.alert.AlertmanagerWebhookPayload;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,13 +12,17 @@ import java.util.Map;
 
 /**
  * Service responsible for creating, resolving, and retrieving monitoring incidents.
- * <p>
- * Incoming Alertmanager alerts are converted into {@link Incident} entities. Firing
- * alerts create new incidents unless an active incident with the same fingerprint
- * already exists. Resolved alerts mark the matching active incident as resolved.
+ *
+ * <p>Incoming Alertmanager alerts are converted into {@link Incident} entities.
+ * Firing alerts create new incidents unless an active incident with the same
+ * fingerprint already exists. Resolved alerts mark the matching active incident
+ * as resolved.</p>
  */
 @Service
 public class IncidentService {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(IncidentService.class);
 
     private final IncidentRepository incidentRepository;
 
@@ -31,17 +37,30 @@ public class IncidentService {
 
     /**
      * Processes a single Alertmanager alert.
-     * <p>
-     * Alerts without a fingerprint are ignored because the fingerprint is required
-     * to match firing and resolved alerts. Resolved alerts update an existing active
-     * incident, while firing alerts create a new incident only if no active incident
-     * with the same fingerprint exists.
+     *
+     * <p>A fingerprint is required to reliably match firing and resolved alerts.
+     * Alerts without a usable fingerprint are ignored and logged. Resolved alerts
+     * update an existing active incident, while firing alerts create a new incident
+     * only if no active incident with the same fingerprint exists.</p>
      *
      * @param alert alert received from Alertmanager
      */
     @Transactional
     public void process(AlertmanagerWebhookPayload.Alert alert) {
-        if (alert == null || alert.fingerprint() == null) {
+        if (alert == null) {
+            log.warn("Received null alert from Alertmanager; ignoring it");
+            return;
+        }
+
+        if (alert.fingerprint() == null || alert.fingerprint().isBlank()) {
+            log.warn(
+                    "Ignoring Alertmanager alert without fingerprint: "
+                            + "alertName={}, device={}, host={}, status={}",
+                    label(alert, "alertname"),
+                    label(alert, "device"),
+                    label(alert, "host"),
+                    alert.status()
+            );
             return;
         }
 
@@ -92,6 +111,10 @@ public class IncidentService {
                 .isPresent();
 
         if (activeIncidentExists) {
+            log.debug(
+                    "Ignoring duplicate firing alert with fingerprint={}",
+                    alert.fingerprint()
+            );
             return;
         }
 
@@ -110,6 +133,14 @@ public class IncidentService {
         );
 
         incidentRepository.save(incident);
+
+        log.info(
+                "Created incident: fingerprint={}, alertName={}, device={}, host={}",
+                incident.getFingerprint(),
+                incident.getAlertName(),
+                incident.getDeviceName(),
+                incident.getHost()
+        );
     }
 
     /**
@@ -125,9 +156,38 @@ public class IncidentService {
                         alert.fingerprint(),
                         IncidentStatus.FIRING
                 )
-                .ifPresent(incident -> incident.resolve(
-                        defaultResolvedTime(alert.endsAt())
-                ));
+                .ifPresentOrElse(
+                        incident -> {
+                            incident.resolve(defaultResolvedTime(alert.endsAt()));
+
+                            log.info(
+                                    "Resolved incident: fingerprint={}, alertName={}, device={}, host={}",
+                                    incident.getFingerprint(),
+                                    incident.getAlertName(),
+                                    incident.getDeviceName(),
+                                    incident.getHost()
+                            );
+                        },
+                        () -> log.warn(
+                                "Received resolved alert without matching active incident: "
+                                        + "fingerprint={}",
+                                alert.fingerprint()
+                        )
+                );
+    }
+
+    /**
+     * Reads one label from an alert safely.
+     *
+     * @param alert alert received from Alertmanager
+     * @param key label key to read
+     * @return label value or {@code unknown} when it is missing
+     */
+    private String label(
+            AlertmanagerWebhookPayload.Alert alert,
+            String key
+    ) {
+        return safeMap(alert.labels()).getOrDefault(key, "unknown");
     }
 
     /**

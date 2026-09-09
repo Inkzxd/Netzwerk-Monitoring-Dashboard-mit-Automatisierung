@@ -7,6 +7,8 @@ import de.htwsaar.monitoring.model.CheckResultRepository;
 import de.htwsaar.monitoring.model.Device;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,54 +17,39 @@ import java.net.Socket;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Service responsible for checking configured network devices and publishing metrics.
+ * Service responsible for checking configured network devices, persisting check
+ * history, and publishing Prometheus-compatible metrics.
  */
 @Service
 public class DeviceCheckService {
 
-    /**
-     * Devices configured for monitoring.
-     */
+    private static final Logger log =
+            LoggerFactory.getLogger(DeviceCheckService.class);
+
     private final List<Device> devices;
-
-    /**
-     * Monitoring configuration properties such as devices and timeout.
-     */
     private final MonitoringProperties properties;
+    private final CheckResultRepository checkResultRepository;
 
-    /**
-     * Metric values indicating whether each device is currently reachable.
-     */
-    private final java.util.Map<String, Double> deviceStatusMetrics =
+    private final Map<String, Double> deviceStatusMetrics =
             new ConcurrentHashMap<>();
 
-    /**
-     * Metric values containing the latest measured latency for each device.
-     */
-    private final java.util.Map<String, Double> latencyMetrics =
+    private final Map<String, Double> latencyMetrics =
             new ConcurrentHashMap<>();
 
-    /**
-     * Most recent immutable list of device check results.
-     */
     private final AtomicReference<List<CheckResult>> latestResults =
             new AtomicReference<>(List.of());
 
     /**
-     * Repository to persist check results. May be null in tests.
-     */
-    private final CheckResultRepository checkResultRepository;
-
-    /**
-     * Creates a new device check service and registers device metrics.
+     * Creates the device check service and registers metrics for configured devices.
      *
-     * @param properties monitoring configuration properties
-     * @param registry meter registry used to publish Micrometer metrics
-     * @param checkResultRepository repository to persist check results (may be null in tests)
+     * @param properties monitoring configuration
+     * @param registry Micrometer registry used by Prometheus
+     * @param checkResultRepository repository for persistent check history
      */
     public DeviceCheckService(
             MonitoringProperties properties,
@@ -72,11 +59,10 @@ public class DeviceCheckService {
         this.properties = properties;
         this.checkResultRepository = checkResultRepository;
 
-        // Map DeviceProperties (with id) to internal Device model (with id)
         this.devices = properties.devices()
                 .stream()
                 .map(device -> new Device(
-                        device.id(),        // stable ID
+                        device.id(),
                         device.name(),
                         device.host(),
                         device.port(),
@@ -85,22 +71,27 @@ public class DeviceCheckService {
                 .toList();
 
         registerMetrics(registry);
+
+        log.info(
+                "DeviceCheckService initialized with {} configured device(s)",
+                devices.size()
+        );
     }
 
     /**
-     * Registers Prometheus-compatible gauges for device status and latency.
+     * Registers reachability and latency gauges for every configured device.
      *
-     * @param registry meter registry used to register the gauges
+     * @param registry Micrometer meter registry
      */
     private void registerMetrics(MeterRegistry registry) {
         for (Device device : devices) {
-            deviceStatusMetrics.put(device.getName(), 0.0);
-            latencyMetrics.put(device.getName(), 0.0);
+            deviceStatusMetrics.put(device.getId(), 0.0);
+            latencyMetrics.put(device.getId(), 0.0);
 
             Gauge.builder(
                             "network_device_up",
                             deviceStatusMetrics,
-                            metrics -> metrics.getOrDefault(device.getName(), 0.0)
+                            metrics -> metrics.getOrDefault(device.getId(), 0.0)
                     )
                     .description("Whether the network device is reachable")
                     .tag("device_id", device.getId())
@@ -111,9 +102,9 @@ public class DeviceCheckService {
             Gauge.builder(
                             "network_device_latency_ms",
                             latencyMetrics,
-                            metrics -> metrics.getOrDefault(device.getName(), 0.0)
+                            metrics -> metrics.getOrDefault(device.getId(), 0.0)
                     )
-                    .description("Latest network device check latency")
+                    .description("Latest network device check latency in milliseconds")
                     .tag("device_id", device.getId())
                     .tag("device_name", device.getName())
                     .tag("host", device.getHost())
@@ -122,17 +113,24 @@ public class DeviceCheckService {
     }
 
     /**
-     * Checks all enabled devices and updates the latest results and metrics.
-     * Also persists each check result to the database if the repository is available.
+     * Checks all enabled devices, updates metrics, persists every result, and stores
+     * the latest result list in memory.
      *
-     * @return immutable list of check results for enabled devices
+     * @return immutable list of results for enabled devices
      */
     @Transactional
     public synchronized List<CheckResult> checkAllDevices() {
+        log.info("Starting check for {} configured device(s)", devices.size());
+
         List<CheckResult> results = new ArrayList<>();
 
         for (Device device : devices) {
             if (!device.isEnabled()) {
+                log.debug(
+                        "Skipping disabled device: id={}, name={}",
+                        device.getId(),
+                        device.getName()
+                );
                 continue;
             }
 
@@ -140,101 +138,171 @@ public class DeviceCheckService {
             results.add(result);
 
             deviceStatusMetrics.put(
-                    device.getName(),
+                    device.getId(),
                     result.isUp() ? 1.0 : 0.0
             );
 
             latencyMetrics.put(
-                    device.getName(),
+                    device.getId(),
                     (double) result.getLatencyMs()
             );
 
-            // Persist check result if repository is available
-            if (checkResultRepository != null) {
-                CheckResultEntity entity = new CheckResultEntity(
-                        result.getDeviceName(),
-                        device.getHost(),
-                        result.isUp(),
-                        result.getLatencyMs(),
-                        result.getCheckedAt(),
-                        null
-                );
-                checkResultRepository.save(entity);
-            }
+            persistCheckResult(device, result);
         }
 
         List<CheckResult> immutableResults = List.copyOf(results);
         latestResults.set(immutableResults);
 
+        log.info(
+                "Completed device check: total={}, up={}, down={}",
+                immutableResults.size(),
+                immutableResults.stream().filter(CheckResult::isUp).count(),
+                immutableResults.stream().filter(result -> !result.isUp()).count()
+        );
+
         return immutableResults;
     }
 
     /**
-     * Checks whether a single device can be reached within the configured timeout.
+     * Persists a single result. In regular runtime the repository must be present;
+     * allowing null only keeps existing isolated unit tests compatible.
+     *
+     * @param device checked device
+     * @param result result of the check
+     */
+    private void persistCheckResult(Device device, CheckResult result) {
+        if (checkResultRepository == null) {
+            log.debug(
+                    "Skipping persistence because CheckResultRepository is null; device={}",
+                    device.getName()
+            );
+            return;
+        }
+
+        CheckResultEntity entity = new CheckResultEntity(
+                result.getDeviceName(),
+                device.getHost(),
+                result.isUp(),
+                result.getLatencyMs(),
+                result.getCheckedAt(),
+                null
+        );
+
+        try {
+            checkResultRepository.save(entity);
+
+            log.debug(
+                    "Persisted check result: device={}, host={}, up={}, latencyMs={}",
+                    result.getDeviceName(),
+                    device.getHost(),
+                    result.isUp(),
+                    result.getLatencyMs()
+            );
+        } catch (RuntimeException exception) {
+            log.error(
+                    "Failed to persist check result: device={}, host={}, up={}, latencyMs={}",
+                    result.getDeviceName(),
+                    device.getHost(),
+                    result.isUp(),
+                    result.getLatencyMs(),
+                    exception
+            );
+            throw exception;
+        }
+    }
+
+    /**
+     * Performs one TCP connection check.
      *
      * @param device device to check
-     * @return result containing reachability, latency, and check timestamp
+     * @return current check result
      */
     public CheckResult checkDevice(Device device) {
-        long start = System.currentTimeMillis();
-        boolean up;
+        long startNanos = System.nanoTime();
+        boolean up = false;
 
         try (Socket socket = new Socket()) {
             socket.connect(
                     new InetSocketAddress(device.getHost(), device.getPort()),
-                    (int) properties.timeout().toMillis()
+                    Math.toIntExact(properties.timeout().toMillis())
             );
+
             up = true;
+
+            log.debug(
+                    "TCP check succeeded: device={}, host={}, port={}",
+                    device.getName(),
+                    device.getHost(),
+                    device.getPort()
+            );
         } catch (Exception exception) {
-            up = false;
+            log.warn(
+                    "TCP check failed: device={}, host={}, port={}, reason={}",
+                    device.getName(),
+                    device.getHost(),
+                    device.getPort(),
+                    exception.getMessage()
+            );
         }
 
-        long latency = System.currentTimeMillis() - start;
+        long latencyMs =
+                (System.nanoTime() - startNanos) / 1_000_000;
 
         return new CheckResult(
                 device.getName(),
                 up,
-                latency,
+                latencyMs,
                 LocalDateTime.now()
         );
     }
 
     /**
-     * Returns the latest completed device check results.
+     * Returns results from the latest complete check run.
      *
-     * @return immutable list of latest check results
+     * @return immutable latest check results
      */
     public List<CheckResult> getLatestResults() {
         return latestResults.get();
     }
 
     /**
-     * Returns the configured devices.
+     * Returns configured devices.
      *
-     * @return immutable copy of configured devices
+     * @return immutable device list
      */
     public List<Device> getDevices() {
         return List.copyOf(devices);
     }
 
     /**
-     * Deletes check results older than the given timestamp.
-     * Does nothing if the repository is not available.
+     * Deletes persisted results older than the supplied time.
      *
-     * @param before delete all results with checkedAt before this timestamp
+     * @param before delete results older than this time
      */
     @Transactional
     public void deleteOldCheckResults(LocalDateTime before) {
         if (checkResultRepository == null) {
+            log.debug("Skipping history cleanup because repository is null");
             return;
         }
 
-        List<CheckResultEntity> all = checkResultRepository.findAllByOrderByCheckedAtDesc();
-        List<CheckResultEntity> toDelete = all.stream()
-                .filter(e -> e.getCheckedAt().isBefore(before))
+        List<CheckResultEntity> oldResults = checkResultRepository
+                .findAllByOrderByCheckedAtDesc()
+                .stream()
+                .filter(result -> result.getCheckedAt().isBefore(before))
                 .toList();
-        if (!toDelete.isEmpty()) {
-            checkResultRepository.deleteAll(toDelete);
+
+        if (oldResults.isEmpty()) {
+            log.debug("No old check history entries to delete");
+            return;
         }
+
+        checkResultRepository.deleteAll(oldResults);
+
+        log.info(
+                "Deleted {} check history entries older than {}",
+                oldResults.size(),
+                before
+        );
     }
 }

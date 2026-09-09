@@ -12,18 +12,17 @@ import static org.springframework.security.config.Customizer.withDefaults;
 
 /**
  * Security configuration for the monitoring application.
- *
- * - Defines an in-memory admin user with ADMIN role.
- * - Credentials are read from environment variables:
- *   APP_ADMIN_USER, APP_ADMIN_PASSWORD.
- * - Protects write endpoints (/api/checks/run, /api/alerts) with role-based access control.
  */
 @Configuration
 public class SecurityConfig {
 
     /**
-     * Provides the UserDetailsService with a single ADMIN user.
-     * Username and password are configured via environment variables.
+     * Defines the in-memory administrator account.
+     *
+     * <p>Credentials are read from APP_ADMIN_USER and APP_ADMIN_PASSWORD.
+     * Fallback values are used only for local development.</p>
+     *
+     * @return user details service with one ADMIN user
      */
     @Bean
     public UserDetailsService userDetailsService() {
@@ -47,18 +46,19 @@ public class SecurityConfig {
     }
 
     /**
-     * Configures HTTP security:
-     * - Static assets and health endpoints are public.
-     * - Read-only APIs for dashboard are public.
-     * - Write APIs (run checks, receive alerts) require ADMIN role.
-     * - All other requests require authentication.
+     * Configures public read-only endpoints and protected write endpoints.
+     *
+     * @param http Spring Security HTTP configuration
+     * @return configured filter chain
+     * @throws Exception when configuration cannot be built
      */
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http)
+            throws Exception {
+
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        // Public: static files and health endpoints
                         .requestMatchers(
                                 "/",
                                 "/index.html",
@@ -69,20 +69,18 @@ public class SecurityConfig {
                                 "/actuator/prometheus"
                         ).permitAll()
 
-                        // Public: read-only APIs for dashboard
                         .requestMatchers(
                                 "/api/devices",
                                 "/api/checks/latest",
+                                "/api/checks/history",
                                 "/api/incidents/**"
                         ).permitAll()
 
-                        // Admin only: trigger checks and receive alerts
                         .requestMatchers(
                                 "/api/checks/run",
                                 "/api/alerts"
                         ).hasRole("ADMIN")
 
-                        // Everything else requires authentication
                         .anyRequest().authenticated()
                 )
                 .httpBasic(withDefaults());

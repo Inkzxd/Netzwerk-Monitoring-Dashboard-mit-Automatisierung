@@ -140,6 +140,31 @@ class IncidentServiceTest {
     }
 
     @Test
+    void shouldIgnoreAlertWithoutFingerprint() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "firing",
+                Map.of(
+                        "alertname", "NetworkDeviceDown",
+                        "device", "Test Device",
+                        "host", "192.0.2.1",
+                        "severity", "critical"
+                ),
+                Map.of(
+                        "summary", "Network device is down",
+                        "description", "Device is unreachable"
+                ),
+                OffsetDateTime.parse("2026-09-09T12:00:00Z"),
+                null,
+                "http://prometheus:9090/graph",
+                null
+        );
+
+        incidentService.process(alert);
+
+        verify(incidentRepository, never()).save(any(Incident.class));
+    }
+
+    @Test
     void shouldCreateNewIncidentAfterPreviousIncidentWasResolved() {
         AlertmanagerWebhookPayload.Alert alert = alert(
                 "firing",
