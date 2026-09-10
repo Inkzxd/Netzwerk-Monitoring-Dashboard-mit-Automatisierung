@@ -7,7 +7,7 @@ WORKDIR /build
 COPY pom.xml .
 COPY src ./src
 
-RUN mvn -B clean package -DskipTests
+RUN mvn -B clean verify
 
 FROM eclipse-temurin:21-jre
 

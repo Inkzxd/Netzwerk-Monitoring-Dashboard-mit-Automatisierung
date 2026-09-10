@@ -19,14 +19,14 @@ groups:
           summary: "Network latency is too high"
           description: "Device {{ $labels.device }} at {{ $labels.host }} has latency of {{ $value }} ms."
 
-      - alert: MonitoringTargetMissing
-        expr: absent(network_device_up)
+      - alert: MonitoringMetricsMissing
+        expr: absent(up{job="spring-boot-app"})
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "No network monitoring metrics available"
-          description: "Prometheus cannot find network_device_up metrics."
+          summary: "Monitoring application metrics are missing"
+          description: "Prometheus cannot find metrics from the Spring Boot monitoring application."
 
       - alert: SpringBootAppDown
         expr: up{job="spring-boot-app"} == 0

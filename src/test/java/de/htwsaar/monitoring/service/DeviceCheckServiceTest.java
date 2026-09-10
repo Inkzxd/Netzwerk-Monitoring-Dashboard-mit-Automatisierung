@@ -18,6 +18,7 @@ class DeviceCheckServiceTest {
         MonitoringProperties properties =
                 new MonitoringProperties(
                         Duration.ofMillis(100),
+                        Duration.ofDays(30),
                         List.of(
                                 new MonitoringProperties.DeviceProperties(
                                         "test-device",   // id

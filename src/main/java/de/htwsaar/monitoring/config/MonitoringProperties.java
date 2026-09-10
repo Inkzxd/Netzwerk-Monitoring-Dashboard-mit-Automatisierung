@@ -11,12 +11,17 @@ import java.util.List;
 @ConfigurationProperties(prefix = "monitoring")
 public record MonitoringProperties(
         Duration timeout,
+        Duration historyRetention,
         List<DeviceProperties> devices
 ) {
 
     public MonitoringProperties {
         if (timeout == null) {
             timeout = Duration.ofSeconds(2);
+        }
+
+        if (historyRetention == null) {
+            historyRetention = Duration.ofDays(30);
         }
 
         if (devices == null) {

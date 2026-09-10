@@ -19,6 +19,7 @@ server:
 monitoring:
   interval: 15000
   timeout: 2s
+  history-retention: 30d
 
   devices:
     - id: app

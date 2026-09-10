@@ -21,6 +21,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.annotation.PostConstruct;
+
 /**
  * Service responsible for checking configured network devices, persisting check
  * history, and publishing Prometheus-compatible metrics.
@@ -79,6 +82,18 @@ public class DeviceCheckService {
     }
 
     /**
+     * Executes an initial device check after the application has started.
+     * <p>
+     * This ensures that metrics are populated before the first scheduled
+     * check runs, reducing the risk of false-positive alerts during startup.
+     */
+    @PostConstruct
+    public void initialCheck() {
+        log.info("Executing initial device check after startup");
+        checkAllDevices();
+    }
+
+    /**
      * Registers reachability and latency gauges for every configured device.
      *
      * @param registry Micrometer meter registry
@@ -95,7 +110,7 @@ public class DeviceCheckService {
                     )
                     .description("Whether the network device is reachable")
                     .tag("device_id", device.getId())
-                    .tag("device_name", device.getName())
+                    .tag("device", device.getName())
                     .tag("host", device.getHost())
                     .register(registry);
 
@@ -106,7 +121,7 @@ public class DeviceCheckService {
                     )
                     .description("Latest network device check latency in milliseconds")
                     .tag("device_id", device.getId())
-                    .tag("device_name", device.getName())
+                    .tag("device", device.getName())
                     .tag("host", device.getHost())
                     .register(registry);
         }
@@ -304,5 +319,26 @@ public class DeviceCheckService {
                 oldResults.size(),
                 before
         );
+    }
+
+    /**
+     * Deletes check history entries older than the configured retention period.
+     * <p>
+     * This method is intended to be called by a scheduled task.
+     */
+    @Transactional
+    public void cleanupHistory() {
+        if (checkResultRepository == null) {
+            log.debug("Skipping history cleanup because repository is null");
+            return;
+        }
+
+        if (properties.historyRetention() == null) {
+            log.debug("Skipping history cleanup because retention period is not configured");
+            return;
+        }
+
+        LocalDateTime before = LocalDateTime.now().minus(properties.historyRetention());
+        deleteOldCheckResults(before);
     }
 }

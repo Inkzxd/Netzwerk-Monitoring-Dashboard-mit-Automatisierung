@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.LocalDateTime;
 import java.util.Map;
 
+import java.time.format.DateTimeParseException;
+import java.util.HashMap;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -44,5 +47,39 @@ public class GlobalExceptionHandler {
                 "message", "An unexpected server error occurred.",
                 "timestamp", LocalDateTime.now().toString()
         ));
+    }
+
+    @ExceptionHandler(DateTimeParseException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidDate(
+            DateTimeParseException exception
+    ) {
+        log.warn(
+                "Rejected request with invalid date-time parameter: {}",
+                exception.getMessage()
+        );
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("error", "invalid_parameter");
+        body.put("message", "Parameter 'since' must be a valid ISO-8601 date-time.");
+        body.put("timestamp", java.time.LocalDateTime.now().toString());
+
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidArgument(
+            IllegalArgumentException exception
+    ) {
+        log.warn(
+                "Rejected request with invalid argument: {}",
+                exception.getMessage()
+        );
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("error", "invalid_parameter");
+        body.put("message", exception.getMessage());
+        body.put("timestamp", java.time.LocalDateTime.now().toString());
+
+        return ResponseEntity.badRequest().body(body);
     }
 }

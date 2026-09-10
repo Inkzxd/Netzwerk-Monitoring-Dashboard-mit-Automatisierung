@@ -34,4 +34,12 @@ public class MonitoringScheduler {
     public void runChecks() {
         deviceCheckService.checkAllDevices();
     }
+
+    /**
+     * Cleans up old check history entries once per day at 03:00.
+     */
+    @Scheduled(cron = "0 0 3 * * *")
+    public void cleanupHistory() {
+        deviceCheckService.cleanupHistory();
+    }
 }
