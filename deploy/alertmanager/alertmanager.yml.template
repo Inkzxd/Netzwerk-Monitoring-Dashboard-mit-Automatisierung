@@ -18,5 +18,5 @@ receivers:
         send_resolved: true
         http_config:
           basic_auth:
-            username: admin
-            password: your-strong-application-password
+            username: ${APP_ADMIN_USER}
+            password: ${APP_ADMIN_PASSWORD}

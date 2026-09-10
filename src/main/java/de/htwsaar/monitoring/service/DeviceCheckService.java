@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.annotation.PostConstruct;
 
 /**
@@ -100,13 +99,16 @@ public class DeviceCheckService {
      */
     private void registerMetrics(MeterRegistry registry) {
         for (Device device : devices) {
-            deviceStatusMetrics.put(device.getId(), 0.0);
-            latencyMetrics.put(device.getId(), 0.0);
+            deviceStatusMetrics.put(device.getId(), Double.NaN);
+            latencyMetrics.put(device.getId(), Double.NaN);
 
             Gauge.builder(
                             "network_device_up",
                             deviceStatusMetrics,
-                            metrics -> metrics.getOrDefault(device.getId(), 0.0)
+                            metrics -> metrics.getOrDefault(
+                                    device.getId(),
+                                    Double.NaN
+                            )
                     )
                     .description("Whether the network device is reachable")
                     .tag("device_id", device.getId())
@@ -117,9 +119,14 @@ public class DeviceCheckService {
             Gauge.builder(
                             "network_device_latency_ms",
                             latencyMetrics,
-                            metrics -> metrics.getOrDefault(device.getId(), 0.0)
+                            metrics -> metrics.getOrDefault(
+                                    device.getId(),
+                                    Double.NaN
+                            )
                     )
-                    .description("Latest network device check latency in milliseconds")
+                    .description(
+                            "Latest network device check latency in milliseconds"
+                    )
                     .tag("device_id", device.getId())
                     .tag("device", device.getName())
                     .tag("host", device.getHost())
@@ -200,7 +207,7 @@ public class DeviceCheckService {
                 result.isUp(),
                 result.getLatencyMs(),
                 result.getCheckedAt(),
-                null
+                result.getErrorMessage()
         );
 
         try {
@@ -235,10 +242,14 @@ public class DeviceCheckService {
     public CheckResult checkDevice(Device device) {
         long startNanos = System.nanoTime();
         boolean up = false;
+        String errorMessage = null;
 
         try (Socket socket = new Socket()) {
             socket.connect(
-                    new InetSocketAddress(device.getHost(), device.getPort()),
+                    new InetSocketAddress(
+                            device.getHost(),
+                            device.getPort()
+                    ),
                     Math.toIntExact(properties.timeout().toMillis())
             );
 
@@ -251,6 +262,10 @@ public class DeviceCheckService {
                     device.getPort()
             );
         } catch (Exception exception) {
+            errorMessage = exception.getClass().getSimpleName()
+                    + ": "
+                    + exception.getMessage();
+
             log.warn(
                     "TCP check failed: device={}, host={}, port={}, reason={}",
                     device.getName(),
@@ -267,7 +282,8 @@ public class DeviceCheckService {
                 device.getName(),
                 up,
                 latencyMs,
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                errorMessage
         );
     }
 

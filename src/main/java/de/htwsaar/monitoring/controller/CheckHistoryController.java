@@ -26,18 +26,33 @@ public class CheckHistoryController {
             @RequestParam(required = false) String device,
             @RequestParam(required = false) String since
     ) {
+        if (device != null && since != null) {
+            throw new IllegalArgumentException(
+                    "Parameters 'device' and 'since' cannot be used together."
+            );
+        }
+
+        if (limit != null && limit <= 0) {
+            throw new IllegalArgumentException(
+                    "Parameter 'limit' must be greater than zero."
+            );
+        }
+
         List<CheckResultEntity> result;
 
-        if (device != null) {
-            result = repository.findByDeviceNameOrderByCheckedAtDesc(device);
-        } else if (since != null) {
+        if (device != null && !device.isBlank()) {
+            result = repository
+                    .findByDeviceNameOrderByCheckedAtDesc(device);
+        } else if (since != null && !since.isBlank()) {
             LocalDateTime from = LocalDateTime.parse(since);
-            result = repository.findByCheckedAtAfterOrderByCheckedAtDesc(from);
+
+            result = repository
+                    .findByCheckedAtAfterOrderByCheckedAtDesc(from);
         } else {
             result = repository.findAllByOrderByCheckedAtDesc();
         }
 
-        if (limit != null && limit > 0 && limit < result.size()) {
+        if (limit != null && limit < result.size()) {
             result = result.subList(0, limit);
         }
 

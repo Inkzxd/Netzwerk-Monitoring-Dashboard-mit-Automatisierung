@@ -5,27 +5,25 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
-/**
- * Security configuration for the monitoring application.
- */
 @Configuration
 public class SecurityConfig {
 
-    /**
-     * Defines the in-memory administrator account.
-     *
-     * <p>Credentials are read from APP_ADMIN_USER and APP_ADMIN_PASSWORD.
-     * Fallback values are used only for local development.</p>
-     *
-     * @return user details service with one ADMIN user
-     */
     @Bean
-    public UserDetailsService userDetailsService() {
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public UserDetailsService userDetailsService(
+            PasswordEncoder passwordEncoder
+    ) {
         String username = System.getenv("APP_ADMIN_USER");
         if (username == null || username.isBlank()) {
             username = "admin";
@@ -36,22 +34,15 @@ public class SecurityConfig {
             password = "change-me-in-production";
         }
 
-        var admin = User.withDefaultPasswordEncoder()
+        var admin = User.builder()
                 .username(username)
-                .password(password)
+                .password(passwordEncoder.encode(password))
                 .roles("ADMIN")
                 .build();
 
         return new InMemoryUserDetailsManager(admin);
     }
 
-    /**
-     * Configures public read-only endpoints and protected write endpoints.
-     *
-     * @param http Spring Security HTTP configuration
-     * @return configured filter chain
-     * @throws Exception when configuration cannot be built
-     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http)
             throws Exception {
@@ -66,7 +57,8 @@ public class SecurityConfig {
                                 "/app.js",
                                 "/actuator/health",
                                 "/actuator/info",
-                                "/actuator/prometheus"
+                                "/actuator/prometheus",
+                                "/api/status"
                         ).permitAll()
 
                         .requestMatchers(
