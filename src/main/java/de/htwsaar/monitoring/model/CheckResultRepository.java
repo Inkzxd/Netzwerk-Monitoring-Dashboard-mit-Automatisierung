@@ -12,4 +12,6 @@ public interface CheckResultRepository extends JpaRepository<CheckResultEntity, 
     List<CheckResultEntity> findByDeviceNameOrderByCheckedAtDesc(String deviceName);
 
     List<CheckResultEntity> findByCheckedAtAfterOrderByCheckedAtDesc(LocalDateTime from);
+
+    List<CheckResultEntity> findByCheckedAtBefore(LocalDateTime before);
 }

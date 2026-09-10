@@ -35,19 +35,6 @@ public class GlobalExceptionHandler {
         ));
     }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleUnexpectedError(
-            Exception exception
-    ) {
-        log.error("Unexpected application error", exception);
-
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "error", "internal_error",
-                "message", "An unexpected server error occurred.",
-                "timestamp", LocalDateTime.now().toString()
-        ));
-    }
-
     @ExceptionHandler(DateTimeParseException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidDate(
             DateTimeParseException exception
@@ -57,12 +44,11 @@ public class GlobalExceptionHandler {
                 exception.getMessage()
         );
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("error", "invalid_parameter");
-        body.put("message", "Parameter 'since' must be a valid ISO-8601 date-time.");
-        body.put("timestamp", java.time.LocalDateTime.now().toString());
-
-        return ResponseEntity.badRequest().body(body);
+        return ResponseEntity.badRequest().body(Map.of(
+                "error", "invalid_parameter",
+                "message", "Parameter 'since' must be a valid ISO-8601 date-time.",
+                "timestamp", LocalDateTime.now().toString()
+        ));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -74,11 +60,23 @@ public class GlobalExceptionHandler {
                 exception.getMessage()
         );
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("error", "invalid_parameter");
-        body.put("message", exception.getMessage());
-        body.put("timestamp", java.time.LocalDateTime.now().toString());
+        return ResponseEntity.badRequest().body(Map.of(
+                "error", "invalid_parameter",
+                "message", exception.getMessage(),
+                "timestamp", LocalDateTime.now().toString()
+        ));
+    }
 
-        return ResponseEntity.badRequest().body(body);
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleUnexpectedError(
+            Exception exception
+    ) {
+        log.error("Unexpected application error", exception);
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "internal_error",
+                "message", "An unexpected server error occurred.",
+                "timestamp", LocalDateTime.now().toString()
+        ));
     }
 }

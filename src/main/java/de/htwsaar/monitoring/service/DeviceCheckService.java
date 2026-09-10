@@ -317,11 +317,8 @@ public class DeviceCheckService {
             return;
         }
 
-        List<CheckResultEntity> oldResults = checkResultRepository
-                .findAllByOrderByCheckedAtDesc()
-                .stream()
-                .filter(result -> result.getCheckedAt().isBefore(before))
-                .toList();
+        List<CheckResultEntity> oldResults =
+                checkResultRepository.findByCheckedAtBefore(before);
 
         if (oldResults.isEmpty()) {
             log.debug("No old check history entries to delete");
