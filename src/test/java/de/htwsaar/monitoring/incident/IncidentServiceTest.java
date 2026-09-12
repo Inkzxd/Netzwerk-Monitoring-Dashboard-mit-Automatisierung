@@ -50,9 +50,7 @@ class IncidentServiceTest {
 
         incidentService.process(alert);
 
-        ArgumentCaptor<Incident> captor =
-                ArgumentCaptor.forClass(Incident.class);
-
+        ArgumentCaptor<Incident> captor = ArgumentCaptor.forClass(Incident.class);
         verify(incidentRepository).save(captor.capture());
 
         Incident savedIncident = captor.getValue();
@@ -179,6 +177,272 @@ class IncidentServiceTest {
                 .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
                         "fp-001",
                         IncidentStatus.FIRING
+                ))
+                .thenReturn(Optional.empty());
+
+        incidentService.process(alert);
+
+        verify(incidentRepository).save(any(Incident.class));
+    }
+
+    @Test
+    void shouldIgnoreNullAlert() {
+        incidentService.process(null);
+        verifyNoInteractions(incidentRepository);
+    }
+
+    @Test
+    void shouldIgnoreAlertWithBlankFingerprint() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "firing",
+                Map.of(
+                        "alertname", "NetworkDeviceDown",
+                        "device", "Router",
+                        "host", "192.0.2.1",
+                        "severity", "critical"
+                ),
+                Map.of(
+                        "summary", "Device is down",
+                        "description", "Router unreachable"
+                ),
+                OffsetDateTime.now().minusMinutes(5),
+                null,
+                "http://prometheus:9090/graph",
+                ""
+        );
+
+        incidentService.process(alert);
+
+        verify(incidentRepository, never()).save(any(Incident.class));
+    }
+
+    @Test
+    void shouldNotCreateIncidentForResolvedAlertWithoutActiveIncident() {
+        AlertmanagerWebhookPayload.Alert alert = alert(
+                "resolved",
+                "fp-missing",
+                "Router",
+                "192.0.2.1",
+                OffsetDateTime.now().minusMinutes(5),
+                OffsetDateTime.now()
+        );
+
+        when(incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        "fp-missing", IncidentStatus.FIRING
+                ))
+                .thenReturn(Optional.empty());
+
+        incidentService.process(alert);
+
+        verify(incidentRepository, never()).save(any(Incident.class));
+    }
+
+    @Test
+    void shouldUseUnknownForMissingLabels() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "firing",
+                Map.of(),
+                Map.of(
+                        "summary", "Device is down",
+                        "description", "Router unreachable"
+                ),
+                OffsetDateTime.now(),
+                null,
+                "http://prometheus:9090/graph",
+                "fp-labels"
+        );
+
+        when(incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        "fp-labels", IncidentStatus.FIRING
+                ))
+                .thenReturn(Optional.empty());
+
+        incidentService.process(alert);
+
+        verify(incidentRepository).save(any(Incident.class));
+    }
+
+    @Test
+    void shouldUseEmptyStringForMissingAnnotations() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "firing",
+                Map.of(
+                        "alertname", "NetworkDeviceDown",
+                        "device", "Router",
+                        "host", "192.0.2.1",
+                        "severity", "critical"
+                ),
+                Map.of(),
+                OffsetDateTime.now(),
+                null,
+                "http://prometheus:9090/graph",
+                "fp-annotations"
+        );
+
+        when(incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        "fp-annotations", IncidentStatus.FIRING
+                ))
+                .thenReturn(Optional.empty());
+
+        incidentService.process(alert);
+
+        verify(incidentRepository).save(any(Incident.class));
+    }
+
+    @Test
+    void shouldUseCurrentTimeWhenStartsAtIsNull() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "firing",
+                Map.of(
+                        "alertname", "NetworkDeviceDown",
+                        "device", "Router",
+                        "host", "192.0.2.1",
+                        "severity", "critical"
+                ),
+                Map.of(
+                        "summary", "Device is down",
+                        "description", "Router unreachable"
+                ),
+                null,
+                null,
+                "http://prometheus:9090/graph",
+                "fp-time"
+        );
+
+        when(incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        "fp-time", IncidentStatus.FIRING
+                ))
+                .thenReturn(Optional.empty());
+
+        incidentService.process(alert);
+
+        verify(incidentRepository).save(any(Incident.class));
+    }
+
+    @Test
+    void shouldUseCurrentTimeWhenEndsAtIsNull() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "resolved",
+                Map.of(
+                        "alertname", "NetworkDeviceDown",
+                        "device", "Router",
+                        "host", "192.0.2.1",
+                        "severity", "critical"
+                ),
+                Map.of(
+                        "summary", "Device recovered",
+                        "description", "Router is back"
+                ),
+                OffsetDateTime.now().minusMinutes(10),
+                null,
+                "http://prometheus:9090/graph",
+                "fp-ends"
+        );
+
+        Incident existing = new Incident(
+                "fp-ends",
+                "NetworkDeviceDown",
+                "Router",
+                "192.0.2.1",
+                "critical",
+                OffsetDateTime.now().minusMinutes(10),
+                "Device is down",
+                "Router unreachable"
+        );
+
+        when(incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        "fp-ends", IncidentStatus.FIRING
+                ))
+                .thenReturn(Optional.of(existing));
+
+        incidentService.process(alert);
+
+        assertEquals(IncidentStatus.RESOLVED, existing.getStatus());
+        assertEquals(existing.getResolvedAt().getMinute(), OffsetDateTime.now().getMinute());
+    }
+
+    @Test
+    void shouldHandleCaseInsensitiveStatus() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "FIRING",
+                Map.of(
+                        "alertname", "NetworkDeviceDown",
+                        "device", "Router",
+                        "host", "192.0.2.1",
+                        "severity", "critical"
+                ),
+                Map.of(
+                        "summary", "Device is down",
+                        "description", "Router unreachable"
+                ),
+                OffsetDateTime.now(),
+                null,
+                "http://prometheus:9090/graph",
+                "fp-case"
+        );
+
+        when(incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        "fp-case", IncidentStatus.FIRING
+                ))
+                .thenReturn(Optional.empty());
+
+        incidentService.process(alert);
+
+        verify(incidentRepository).save(any(Incident.class));
+    }
+
+    @Test
+    void shouldHandleNullLabelsMap() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "firing",
+                null,
+                Map.of(
+                        "summary", "Device is down",
+                        "description", "Router unreachable"
+                ),
+                OffsetDateTime.now(),
+                null,
+                "http://prometheus:9090/graph",
+                "fp-null-labels"
+        );
+
+        when(incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        "fp-null-labels", IncidentStatus.FIRING
+                ))
+                .thenReturn(Optional.empty());
+
+        incidentService.process(alert);
+
+        verify(incidentRepository).save(any(Incident.class));
+    }
+
+    @Test
+    void shouldHandleNullAnnotationsMap() {
+        AlertmanagerWebhookPayload.Alert alert = new AlertmanagerWebhookPayload.Alert(
+                "firing",
+                Map.of(
+                        "alertname", "NetworkDeviceDown",
+                        "device", "Router",
+                        "host", "192.0.2.1",
+                        "severity", "critical"
+                ),
+                null,
+                OffsetDateTime.now(),
+                null,
+                "http://prometheus:9090/graph",
+                "fp-null-annotations"
+        );
+
+        when(incidentRepository
+                .findFirstByFingerprintAndStatusOrderByStartedAtDesc(
+                        "fp-null-annotations", IncidentStatus.FIRING
                 ))
                 .thenReturn(Optional.empty());
 

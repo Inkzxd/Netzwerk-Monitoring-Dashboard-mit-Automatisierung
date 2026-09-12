@@ -25,11 +25,13 @@ public class SecurityConfig {
             PasswordEncoder passwordEncoder
     ) {
         String username = System.getenv("APP_ADMIN_USER");
+
         if (username == null || username.isBlank()) {
             username = "admin";
         }
 
         String password = System.getenv("APP_ADMIN_PASSWORD");
+
         if (password == null || password.isBlank()) {
             password = "change-me-in-production";
         }
@@ -63,6 +65,7 @@ public class SecurityConfig {
 
                         .requestMatchers(
                                 "/api/devices",
+                                "/api/devices/**",
                                 "/api/checks/latest",
                                 "/api/checks/history",
                                 "/api/incidents/**"

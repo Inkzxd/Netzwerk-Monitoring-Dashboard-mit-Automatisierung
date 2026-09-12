@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: network-monitoring-dashboard-test
+
+  datasource:
+    url: jdbc:sqlite:target/test-monitoring.db
+    driver-class-name: org.sqlite.JDBC
+
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    open-in-view: false
+
+monitoring:
+  interval: 15000
+  timeout: 100ms
+  history-retention: 30d
+  devices: []
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+
+  metrics:
+    tags:
+      application: ${spring.application.name}
