@@ -46,6 +46,24 @@ monitoring:
       port: 80
       enabled: true
 
+    - id: test-router
+      name: Test-Router
+      host: 192.0.2.1
+      port: 443
+      enabled: true
+
+    - id: test-switch
+      name: Test-Switch
+      host: 192.0.2.2
+      port: 443
+      enabled: true
+
+    - id: test-firewall
+      name: Test-Firewall
+      host: 192.0.2.3
+      port: 443
+      enabled: true
+
 management:
   endpoints:
     web:

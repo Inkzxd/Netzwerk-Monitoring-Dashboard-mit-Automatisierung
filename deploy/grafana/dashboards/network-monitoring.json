@@ -323,7 +323,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(network_device_up == 0) or vector(0)",
+          "expr": "count(network_device_up == 0) or vector(0)",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
