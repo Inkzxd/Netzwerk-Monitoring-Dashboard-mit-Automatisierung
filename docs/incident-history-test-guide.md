@@ -1,14 +1,24 @@
 # Incident History Test Guide
 
-This guide explains how to generate and demonstrate incident history in the Network Monitoring Dashboard.
+This guide demonstrates the complete incident lifecycle in the Network Monitoring Dashboard.
 
 ## Objective
 
-The objective is to simulate unavailable network devices, verify that the monitoring system creates incidents, restore the devices, and confirm that the incidents are marked as resolved in the incident history.
+```text
+Device DOWN
+    -> Prometheus detects the failure
+    -> NetworkDeviceDown becomes FIRING
+    -> An incident is created
+    -> The device becomes UP again
+    -> The alert becomes RESOLVED
+    -> The incident appears in Incident history
+```
+
+A `DOWN` status alone is not sufficient. The device must remain unavailable until the Prometheus alert becomes `firing`, and the incident must be created before the device is restored.
 
 ## Prerequisites
 
-The application must be running with Docker Compose:
+Start the services from the project root:
 
 ```bash
 docker compose up --build -d
@@ -20,7 +30,7 @@ Check the running containers:
 docker compose ps
 ```
 
-The test devices should be configured in `application.yml`:
+The test devices are configured in `src/main/resources/application.yml`:
 
 ```yaml
 monitoring:
@@ -33,8 +43,8 @@ monitoring:
 
     - id: test-switch
       name: Test-Switch
-      host: 192.0.2.2
-      port: 443
+      host: host.docker.internal
+      port: 59999
       enabled: true
 
     - id: test-firewall
@@ -44,255 +54,268 @@ monitoring:
       enabled: true
 ```
 
-After changing the configuration, rebuild the application:
+`Test-Switch` uses port `59999` for the recovery test. Use only test targets.
 
-```bash
-docker compose down
-docker compose up --build -d
-```
-
-## Step 1: Verify the Test Devices
-
-Check that the devices are loaded by the application:
-
-```bash
-curl -s http://localhost:8080/api/devices | jq
-```
-
-The response should contain:
-
-- `Test-Router`
-- `Test-Switch`
-- `Test-Firewall`
+## Step 1: Verify Device Status
 
 Check the latest monitoring results:
 
 ```bash
-curl -s http://localhost:8080/api/checks/latest | jq
+curl -s http://localhost:8080/api/checks/latest \
+  | jq '[.[] | {deviceName, up, latencyMs, errorMessage}]'
 ```
 
-The test devices should have the following state:
+With the TCP listener stopped, the expected state is:
 
-```json
-{
-  "deviceName": "Test-Router",
-  "up": false
-}
+```text
+Test-Router   DOWN
+Test-Switch   DOWN
+Test-Firewall DOWN
 ```
 
-The same applies to `Test-Switch` and `Test-Firewall`.
+Check only `Test-Switch`:
 
-## Step 2: Wait for the Alert
+```bash
+curl -s http://localhost:8080/api/checks/latest \
+  | jq '.[] | select(.deviceName == "Test-Switch")'
+```
 
-The Prometheus alert rule for unavailable devices is based on:
+## Step 2: Wait for the Prometheus Alert
+
+The alert rule requires the device to remain unavailable for 30 seconds before firing. The alert is defined in `deploy/prometheus/alert.rules.yml`:
 
 ```yaml
 - alert: NetworkDeviceDown
   expr: network_device_up{device!=""} == 0
-  for: 1m
+  for: 20s
 ```
 
-The device must remain unavailable for at least one minute before the alert is triggered.
-
-Check the Prometheus alert page:
+Open the Prometheus alert page:
 
 ```text
 http://localhost:9090/alerts
 ```
 
-The expected alert is:
-
-```text
-NetworkDeviceDown
-```
-
-The alert severity should be:
-
-```text
-critical
-```
-
-## Step 3: Verify the Active Incident
-
-Check the active incidents through the API:
+Or query the Prometheus API:
 
 ```bash
-curl -s http://localhost:8080/api/incidents/active | jq
+curl -s http://localhost:9090/api/v1/alerts \
+  | jq '.data.alerts[] | select(.labels.device == "Test-Switch") | {
+      device: .labels.device,
+      state,
+      activeAt,
+      value
+    }'
 ```
 
-An active incident should contain values similar to:
+Continue only when `Test-Switch` has the following state:
+
+```text
+state: firing
+```
+![test-switch firing.png](img/test-switch%20firing.png)
+## Step 3: Verify the Active Incident
+
+Check the application API:
+
+```bash
+curl -s http://localhost:8080/api/incidents/active \
+  | jq '.[] | {alertName, deviceName, status, severity}'
+```
+
+The expected result is similar to:
 
 ```json
 {
   "alertName": "NetworkDeviceDown",
-  "deviceName": "Test-Router",
+  "deviceName": "Test-Switch",
   "status": "FIRING",
   "severity": "critical"
 }
 ```
 
-You can also open the web dashboard:
+Open the dashboard:
 
 ```text
 http://localhost:8080
 ```
 
-The device should be shown as `DOWN`, and the Active Incidents section should contain the new incident.
+The `Active incidents` section should contain `Test-Switch`.
 
-## Step 4: Restore a Test Device
-
-To test the resolved state, replace one test device temporarily with a local TCP test service.
-
-Start a temporary TCP listener on the host system:
+If the device is `DOWN` but no incident is shown, verify that Prometheus is `firing` and inspect the application logs:
 
 ```bash
-nc -lv 59999
+docker compose logs --tail=100 app
 ```
 
-Change the corresponding device configuration to:
+## Step 4: Recover Test-Switch
+
+After the active incident has been created, start a local TCP listener:
+
+```bash
+nc -lk 59999
+```
+
+Keep the terminal running. In a second terminal, verify the listener:
+
+```bash
+lsof -nP -iTCP:59999 -sTCP:LISTEN
+```
+
+Optional connectivity test:
+
+```bash
+nc -vz localhost 59999
+```
+
+The `Test-Switch` configuration must be:
 
 ```yaml
-    - id: test-router
-      name: Test-Router
-      host: host.docker.internal
-      port: 59999
-      enabled: true
+- id: test-switch
+  name: Test-Switch
+  host: host.docker.internal
+  port: 59999
+  enabled: true
 ```
 
-Restart the application:
+If the configuration was changed, recreate the application:
 
 ```bash
 docker compose down
 docker compose up --build -d
 ```
 
-The `Test-Router` should now become available.
-
-Verify the state:
+Wait 15–30 seconds and check the result:
 
 ```bash
-curl -s http://localhost:8080/api/checks/latest | jq
+curl -s http://localhost:8080/api/checks/latest \
+  | jq '.[] | select(.deviceName == "Test-Switch") | {deviceName, up, latencyMs, errorMessage}'
 ```
 
 The expected result is:
 
 ```json
 {
-  "deviceName": "Test-Router",
+  "deviceName": "Test-Switch",
   "up": true
 }
 ```
 
-Do not interrupt production or critical network devices. Use only a safe test target.
-
 ## Step 5: Verify the Resolved Incident
 
-Wait until Prometheus detects that the test device is available again and sends a resolved alert.
-
-Check all incidents:
+After `Test-Switch` becomes `UP`, wait for the alert to be resolved. Then check all incidents:
 
 ```bash
-curl -s http://localhost:8080/api/incidents | jq
+curl -s http://localhost:8080/api/incidents \
+  | jq '.[] | select(.deviceName == "Test-Switch") | {
+      alertName,
+      deviceName,
+      status,
+      startedAt,
+      resolvedAt
+    }'
 ```
 
-The incident should now contain:
+The expected result is:
 
 ```json
 {
   "alertName": "NetworkDeviceDown",
-  "deviceName": "Test-Router",
+  "deviceName": "Test-Switch",
   "status": "RESOLVED",
+  "startedAt": "...",
   "resolvedAt": "..."
 }
 ```
 
-Check active incidents:
+The active endpoint should no longer return `Test-Switch`:
 
 ```bash
-curl -s http://localhost:8080/api/incidents/active | jq
+curl -s http://localhost:8080/api/incidents/active \
+  | jq '.[] | select(.deviceName == "Test-Switch")'
 ```
 
-The resolved `Test-Router` incident should no longer be listed as active.
+Refresh the dashboard and check the `Incident history` section.
+![test-switch resolved.png](img/test-switch%20resolved.png)
+## Troubleshooting
 
-## Step 6: Generate Several Historical Incidents
+### Test-Switch remains DOWN
 
-Repeat the process for the three test devices:
+Check the following:
 
-1. Let `Test-Router` remain unavailable until `NetworkDeviceDown` becomes firing.
-2. Restore `Test-Router` and wait for the incident to become resolved.
-3. Repeat the same process for `Test-Switch`.
-4. Repeat the same process for `Test-Firewall`.
-5. Open the web dashboard and review the Incident History table.
+- The port is `59999`, not `5999`.
+- `nc -lk 59999` is still running.
+- `lsof -nP -iTCP:59999 -sTCP:LISTEN` shows a listener.
+- The host is `host.docker.internal`.
+- The application container was recreated after changing the configuration.
 
-The table should contain several resolved incidents with different devices, timestamps, and durations.
+View the application log:
 
-## Expected Incident History
+```bash
+docker compose logs --tail=100 app
+```
 
-The result should look similar to:
+### Device is DOWN but no incident exists
 
-| Severity | Alert | Device | Status | Started | Resolved | Duration |
-|---|---|---|---|---|---|---|
-| critical | NetworkDeviceDown | Test-Router | RESOLVED | Test start time | Test end time | Calculated duration |
-| critical | NetworkDeviceDown | Test-Switch | RESOLVED | Test start time | Test end time | Calculated duration |
-| critical | NetworkDeviceDown | Test-Firewall | RESOLVED | Test start time | Test end time | Calculated duration |
+A `DOWN` status alone does not create an incident immediately. Check that:
 
-## Useful Verification Commands
+1. Prometheus shows `NetworkDeviceDown` as `firing`.
+2. The alert has remained firing for at least one minute.
+3. The application receives and processes the alert.
 
-Display all incidents in a compact format:
+### Test-Switch becomes UP but no history entry appears
+
+A resolved alert can only resolve an incident that was previously created while the alert was firing. Repeat the complete sequence:
+
+```text
+DOWN -> FIRING -> Active Incident -> UP -> RESOLVED -> Incident history
+```
+
+## Generate Several History Entries
+
+Repeat the process for `Test-Router`, `Test-Switch`, and `Test-Firewall`:
+
+1. Make one test target unavailable.
+2. Wait until `NetworkDeviceDown` becomes `firing`.
+3. Verify the device in `/api/incidents/active`.
+4. Restore the device.
+5. Wait until the incident becomes `RESOLVED`.
+6. Verify the result in `/api/incidents` and the dashboard.
+
+The final dashboard should contain several resolved incidents with different devices, timestamps, and durations.
+
+## Useful Commands
+
+Display all incidents:
 
 ```bash
 curl -s http://localhost:8080/api/incidents \
   | jq '.[] | {alertName, deviceName, status, startedAt, resolvedAt}'
 ```
 
-Display only active incidents:
+Display active incidents:
 
 ```bash
 curl -s http://localhost:8080/api/incidents/active \
   | jq '.[] | {alertName, deviceName, status}'
 ```
 
-Display only resolved incidents:
+Display resolved incidents:
 
 ```bash
 curl -s http://localhost:8080/api/incidents \
   | jq '[.[] | select(.status == "RESOLVED")]'
 ```
 
-## Recommended Screenshots
-
-For project documentation, take the following screenshots:
-
-1. Prometheus showing the `NetworkDeviceDown` alert in firing state.
-2. Alertmanager showing the active alert.
-3. The application dashboard showing test devices as `DOWN`.
-4. The Active Incidents table showing a firing incident.
-5. The application dashboard showing several resolved incidents in Incident History.
-6. Alertmanager showing the resolved state, if required.
-
-Recommended filenames:
-
-```text
-docs/images/prometheus-device-down.png
-docs/images/alertmanager-firing.png
-docs/images/application-device-down.png
-docs/images/application-active-incident.png
-docs/images/application-incident-history.png
-docs/images/alertmanager-resolved.png
-```
-
 ## Final Result
 
-A successful test demonstrates the complete incident lifecycle:
+A successful test demonstrates:
 
 ```text
-Device unavailable
-    -> Prometheus detects network_device_up = 0
-    -> NetworkDeviceDown alert becomes firing
-    -> Alertmanager sends the webhook
-    -> Spring Boot creates an incident
-    -> Device becomes available again
-    -> Alertmanager sends a resolved webhook
-    -> Spring Boot marks the incident as RESOLVED
-    -> Incident appears in Incident History
+DOWN status
+    -> Prometheus FIRING alert
+    -> Active Incident
+    -> Device recovery
+    -> RESOLVED alert
+    -> Incident history entry
 ```

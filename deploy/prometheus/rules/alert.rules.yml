@@ -3,7 +3,7 @@ groups:
     rules:
       - alert: NetworkDeviceDown
         expr: network_device_up{device!=""} == 0
-        for: 1m
+        for: 20s
         labels:
           severity: critical
         annotations:

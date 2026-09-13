@@ -19,4 +19,4 @@ receivers:
         http_config:
           basic_auth:
             username: admin
-            password: your-strong-application-password
+            password: change-me-in-production

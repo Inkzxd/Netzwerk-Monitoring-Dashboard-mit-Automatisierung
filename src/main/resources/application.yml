@@ -17,7 +17,7 @@ server:
   port: 8080
 
 monitoring:
-  interval: 15000
+  interval: 10000
   timeout: 2s
   history-retention: 30d
 
@@ -54,8 +54,8 @@ monitoring:
 
     - id: test-switch
       name: Test-Switch
-      host: 192.0.2.2
-      port: 443
+      host: host.docker.internal
+      port: 59999
       enabled: true
 
     - id: test-firewall
