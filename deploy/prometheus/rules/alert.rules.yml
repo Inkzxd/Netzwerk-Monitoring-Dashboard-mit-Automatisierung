@@ -7,8 +7,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Network device is down"
-          description: "Device {{ $labels.device }} at {{ $labels.host }} is unreachable."
+          summary: Network device is down
+          description: Device {{ $labels.device }} at {{ $labels.host }} is unreachable over TCP.
 
       - alert: HighNetworkLatency
         expr: network_device_latency_ms{device!=""} > 1000
@@ -16,8 +16,26 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Network latency is too high"
-          description: "Device {{ $labels.device }} at {{ $labels.host }} has latency of {{ $value }} ms."
+          summary: Network latency is too high
+          description: Device {{ $labels.device }} at {{ $labels.host }} has TCP latency of {{ $value }} ms.
+
+      - alert: NetworkDevicePingDown
+        expr: network_device_ping_up{device!=""} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: Network device does not respond to ping
+          description: Device {{ $labels.device }} at {{ $labels.host }} does not respond to ICMP ping.
+
+      - alert: NetworkDevicePingLatencyHigh
+        expr: network_device_ping_latency_ms{device!=""} > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Network device ping latency is high
+          description: Device {{ $labels.device }} at {{ $labels.host }} has ping latency of {{ $value }} ms.
 
       - alert: MonitoringMetricsMissing
         expr: absent(up{job="spring-boot-app"})
@@ -25,8 +43,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Monitoring application metrics are missing"
-          description: "Prometheus cannot find metrics from the Spring Boot monitoring application."
+          summary: Monitoring application metrics are missing
+          description: Prometheus cannot find metrics from the Spring Boot monitoring application.
 
       - alert: SpringBootAppDown
         expr: up{job="spring-boot-app"} == 0
@@ -34,5 +52,5 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Spring Boot application is down"
-          description: "Prometheus cannot scrape the Spring Boot monitoring application."
+          summary: Spring Boot application is down
+          description: Prometheus cannot scrape the Spring Boot monitoring application.

@@ -19,6 +19,8 @@ server:
 monitoring:
   interval: 10000
   timeout: 2s
+  ping-interval: 30000
+  ping-timeout: 1000
   history-retention: 30d
 
   devices:
@@ -44,6 +46,18 @@ monitoring:
       name: Demo Service
       host: demo-service
       port: 80
+      enabled: true
+
+    - id: lan-router
+      name: LAN Router
+      host: 10.30.0.1  # Replace with your LAN router's IP address，route -n get default
+      port: 443
+      enabled: true
+
+    - id: vpn-endpoint
+      name: VPN Endpoint
+      host: 134.96.208.36
+      port: 53
       enabled: true
 
     - id: test-router

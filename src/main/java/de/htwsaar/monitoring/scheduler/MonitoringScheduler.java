@@ -1,45 +1,40 @@
 package de.htwsaar.monitoring.scheduler;
 
 import de.htwsaar.monitoring.service.DeviceCheckService;
+import de.htwsaar.monitoring.service.PingCheckService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Scheduler responsible for triggering periodic monitoring checks.
+ * Triggers TCP and ICMP monitoring checks independently.
  */
 @Component
 public class MonitoringScheduler {
 
-    /**
-     * Service used to check all configured devices.
-     */
     private final DeviceCheckService deviceCheckService;
+    private final PingCheckService pingCheckService;
 
-    /**
-     * Creates a new monitoring scheduler.
-     *
-     * @param deviceCheckService service responsible for checking configured devices
-     */
-    public MonitoringScheduler(DeviceCheckService deviceCheckService) {
+    public MonitoringScheduler(
+            DeviceCheckService deviceCheckService,
+            PingCheckService pingCheckService
+    ) {
         this.deviceCheckService = deviceCheckService;
+        this.pingCheckService = pingCheckService;
     }
 
-    /**
-     * Runs checks for all configured devices at the configured monitoring interval.
-     * <p>
-     * The delay is read from {@code monitoring.interval}; if it is not configured,
-     * a default delay of 15000 milliseconds is used.
-     */
     @Scheduled(fixedDelayString = "${monitoring.interval:15000}")
     public void runChecks() {
         deviceCheckService.checkAllDevices();
     }
 
-    /**
-     * Cleans up old check history entries once per day at 03:00.
-     */
+    @Scheduled(fixedDelayString = "${monitoring.ping-interval:30000}")
+    public void runPingChecks() {
+        pingCheckService.checkAllDevices();
+    }
+
     @Scheduled(cron = "0 0 3 * * *")
     public void cleanupHistory() {
         deviceCheckService.cleanupHistory();
     }
+
 }
