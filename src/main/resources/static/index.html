@@ -49,7 +49,7 @@
         <div class="panel-header">
             <div>
                 <h2>Current device status</h2>
-                <p>Latest TCP connectivity checks</p>
+                <p>Latest TCP and ICMP connectivity checks</p>
             </div>
         </div>
 
@@ -58,14 +58,16 @@
                 <thead>
                 <tr>
                     <th>Device</th>
-                    <th>Status</th>
-                    <th>Latency</th>
+                    <th>TCP status</th>
+                    <th>TCP latency</th>
+                    <th>ICMP status</th>
+                    <th>ICMP latency</th>
                     <th>Last checked</th>
                 </tr>
                 </thead>
                 <tbody id="device-table-body">
                 <tr>
-                    <td colspan="4" class="empty-state">
+                    <td colspan="6" class="empty-state">
                         Loading devices...
                     </td>
                 </tr>

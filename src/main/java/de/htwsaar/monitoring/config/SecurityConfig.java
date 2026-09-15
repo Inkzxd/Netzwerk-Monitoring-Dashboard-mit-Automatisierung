@@ -1,54 +1,32 @@
 package de.htwsaar.monitoring.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.provisioning.UserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 
-import static org.springframework.security.config.Customizer.withDefaults;
-
 @Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+    @Value("${APP_ADMIN_USER:admin}")
+    private String adminUsername;
+
+    @Value("${APP_ADMIN_PASSWORD:change-me-in-production}")
+    private String adminPassword;
 
     @Bean
-    public UserDetailsService userDetailsService(
-            PasswordEncoder passwordEncoder
-    ) {
-        String username = System.getenv("APP_ADMIN_USER");
-
-        if (username == null || username.isBlank()) {
-            username = "admin";
-        }
-
-        String password = System.getenv("APP_ADMIN_PASSWORD");
-
-        if (password == null || password.isBlank()) {
-            password = "change-me-in-production";
-        }
-
-        var admin = User.builder()
-                .username(username)
-                .password(passwordEncoder.encode(password))
-                .roles("ADMIN")
-                .build();
-
-        return new InMemoryUserDetailsManager(admin);
-    }
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http)
-            throws Exception {
-
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http
+    ) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
@@ -57,29 +35,38 @@ public class SecurityConfig {
                                 "/index.html",
                                 "/style.css",
                                 "/app.js",
-                                "/actuator/health",
-                                "/actuator/info",
-                                "/actuator/prometheus",
-                                "/api/status"
-                        ).permitAll()
-
-                        .requestMatchers(
+                                "/api/status",
                                 "/api/devices",
                                 "/api/devices/**",
                                 "/api/checks/latest",
                                 "/api/checks/history",
-                                "/api/incidents/**"
+                                "/api/incidents",
+                                "/api/incidents/**",
+                                "/api/pings/latest",
+                                "/actuator/health",
+                                "/actuator/info",
+                                "/actuator/prometheus"
                         ).permitAll()
-
                         .requestMatchers(
                                 "/api/checks/run",
                                 "/api/alerts"
                         ).hasRole("ADMIN")
-
                         .anyRequest().authenticated()
                 )
-                .httpBasic(withDefaults());
+                .httpBasic(httpBasic -> {})
+                .formLogin(form -> form.disable());
 
         return http.build();
+    }
+
+    @Bean
+    public UserDetailsManager userDetailsManager() {
+        UserDetails admin = User
+                .withUsername(adminUsername)
+                .password("{noop}" + adminPassword)
+                .roles("ADMIN")
+                .build();
+
+        return new InMemoryUserDetailsManager(admin);
     }
 }

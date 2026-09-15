@@ -35,11 +35,6 @@ The test devices are configured in `src/main/resources/application.yml`:
 ```yaml
 monitoring:
   devices:
-    - id: test-router
-      name: Test-Router
-      host: 192.0.2.1
-      port: 443
-      enabled: true
 
     - id: test-switch
       name: Test-Switch
@@ -47,11 +42,6 @@ monitoring:
       port: 59999
       enabled: true
 
-    - id: test-firewall
-      name: Test-Firewall
-      host: 192.0.2.3
-      port: 443
-      enabled: true
 ```
 
 `Test-Switch` uses port `59999` for the recovery test. Use only test targets.
@@ -68,9 +58,7 @@ curl -s http://localhost:8080/api/checks/latest \
 With the TCP listener stopped, the expected state is:
 
 ```text
-Test-Router   DOWN
 Test-Switch   DOWN
-Test-Firewall DOWN
 ```
 
 Check only `Test-Switch`:
@@ -273,7 +261,7 @@ DOWN -> FIRING -> Active Incident -> UP -> RESOLVED -> Incident history
 
 ## Generate Several History Entries
 
-Repeat the process for `Test-Router`, `Test-Switch`, and `Test-Firewall`:
+Repeat the process for `Test-Switch`:
 
 1. Make one test target unavailable.
 2. Wait until `NetworkDeviceDown` becomes `firing`.
@@ -282,7 +270,7 @@ Repeat the process for `Test-Router`, `Test-Switch`, and `Test-Firewall`:
 5. Wait until the incident becomes `RESOLVED`.
 6. Verify the result in `/api/incidents` and the dashboard.
 
-The final dashboard should contain several resolved incidents with different devices, timestamps, and durations.
+The final dashboard should contain several resolved incidents with different timestamps and durations.
 
 ## Useful Commands
 
