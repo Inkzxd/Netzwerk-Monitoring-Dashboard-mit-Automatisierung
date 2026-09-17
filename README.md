@@ -305,3 +305,6 @@ Before publishing screenshots or documentation, remove passwords, tokens, privat
 This project is a functional prototype for an automated network monitoring dashboard developed as part of a Bachelor's thesis in Practical Computer Science at HTW Saar.
 
 The prototype focuses on automated data collection, Prometheus-based time-series monitoring, Grafana visualization, Alertmanager-based alerting, incident history, LAN/VPN endpoint checks, and containerized deployment. Optional extensions such as Ansible deployment, additional dashboards, advanced multi-condition alert rules, and extended Grafana role management can be added in future work.
+
+
+test
