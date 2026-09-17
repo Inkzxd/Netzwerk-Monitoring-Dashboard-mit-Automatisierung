@@ -10,7 +10,13 @@ From the project root, run:
 docker compose up --build
 ```
 
-This command builds the application image and starts the services defined in the Compose configuration. [web:2]
+This command builds the application image and starts the services defined in the Docker Compose configuration.
+
+To run in the background:
+
+```bash
+docker compose up --build -d
+```
 
 In a second terminal, check the container status:
 
@@ -34,10 +40,10 @@ docker compose down -v
 
 | Service | URL |
 |---|---|
-| Spring Boot application | [http://localhost:8080](http://localhost:8080) |
-| Grafana | [http://localhost:3000](http://localhost:3000) |
-| Prometheus | [http://localhost:9090](http://localhost:9090) |
-| Alertmanager | [http://localhost:9093](http://localhost:9093) |
+| Spring Boot application | http://localhost:8080 |
+| Grafana | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
+| Alertmanager | http://localhost:9093 |
 
 ## Docker Verification
 
@@ -53,6 +59,18 @@ Verify the health endpoint:
 curl http://localhost:8080/actuator/health
 ```
 
+Verify the ping endpoint:
+
+```bash
+curl http://localhost:8080/api/pings/latest
+```
+
+Check Prometheus metrics:
+
+```bash
+curl http://localhost:8080/actuator/prometheus
+```
+
 Expected result: the endpoints respond successfully and the containers are running.
 
 ## Docker Test Result
@@ -65,14 +83,16 @@ Expected result: the endpoints respond successfully and the containers are runni
 | Grafana container | Running | To be completed |
 | Alertmanager container | Running | To be completed |
 | `/api/status` | HTTP 200 | To be completed |
+| `/api/pings/latest` | HTTP 200 and JSON array | To be completed |
 | `/actuator/health` | HTTP 200 | To be completed |
+| `/actuator/prometheus` | Prometheus metrics available | To be completed |
 
 ## Screenshots
 
 Store screenshots in:
 
 ```text
-docs/images/
+docs/img/
 ```
 
 ### Grafana Dashboard
@@ -88,20 +108,21 @@ Then:
 1. Log in to Grafana.
 2. Open the `Network Monitoring` dashboard.
 3. Select a time range such as `Last 15 minutes`.
-4. Make sure the dashboard shows device status, latency, online devices, offline devices, and total devices.
+4. Make sure the dashboard shows:
+   - TCP device status and latency.
+   - ICMP ping status and latency.
+   - Online devices, offline devices, and total devices.
 5. Take a screenshot containing the dashboard title, time range, and several panels.
 
 Recommended file:
 
 ```text
-docs/images/grafana-dashboard.png
+docs/img/grafana-dashboard.png
 ```
 
 Markdown inclusion:
 
-```markdown
-![Grafana Dashboard](images/grafana-dashboard.png)
-```
+![Grafana Dashboard](img/grafana-dashboard.png)
 
 ### Spring Boot Web Dashboard
 
@@ -117,20 +138,18 @@ The screenshot should show:
 - Online devices.
 - Offline devices.
 - Active incidents.
-- Current device status.
+- Current TCP and ICMP device status.
 - Incident history.
 
 Recommended file:
 
 ```text
-docs/images/application-dashboard.png
+docs/img/application-dashboard.png
 ```
 
 Markdown inclusion:
 
-```markdown
-![Application Dashboard](images/application-dashboard.png)
-```
+![Application Dashboard](img/application-dashboard.png)
 
 ### Alertmanager Alert
 
@@ -154,15 +173,12 @@ Do not intentionally interrupt production or critical network devices.
 Recommended files:
 
 ```text
-docs/images/alertmanager-firing.png
-docs/images/alertmanager-resolved.png
+docs/img/alertmanager-firing.png
 ```
 
 Markdown inclusion:
 
-```markdown
-![Alertmanager Firing Alert](images/alertmanager-firing.png)
-```
+![Alertmanager Firing Alert](img/alertmanager-firing.png)
 
 ### Docker Compose Startup
 
@@ -185,17 +201,16 @@ Take another screenshot showing the services in the `Up` or `running` state.
 Recommended files:
 
 ```text
-docs/images/docker-compose-up.png
-docs/images/docker-compose-ps.png
+docs/img/docker-compose-up.png
+docs/img/docker-compose-ps.png
 ```
 
 Markdown inclusion:
 
-```markdown
-![Docker Compose Startup](images/docker-compose-up.png)
 
-![Docker Compose Services](images/docker-compose-ps.png)
-```
+![Docker Compose Startup](img/docker-compose-up.png)
+
+![Docker Compose Services](img/docker-compose-ps.png)
 
 ## Security and Privacy
 
