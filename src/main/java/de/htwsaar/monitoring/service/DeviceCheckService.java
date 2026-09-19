@@ -24,8 +24,43 @@ import java.util.concurrent.atomic.AtomicReference;
 import jakarta.annotation.PostConstruct;
 
 /**
- * Service responsible for checking configured network devices, persisting check
- * history, and publishing Prometheus-compatible metrics.
+ * Service responsible for performing TCP connectivity checks on configured network devices.
+ * <p>
+ * This service executes the following workflow for each enabled device:
+ * <ol>
+ *   <li><strong>TCP Connection Check</strong>: Attempts to establish a TCP connection to the
+ *       configured host and port using {@link java.net.Socket#connect(java.net.SocketAddress, int)}.</li>
+ *   <li><strong>Timeout Handling</strong>: Uses a configurable timeout (default: {@code monitoring.timeout})
+ *       to prevent indefinite blocking. If the connection attempt exceeds this timeout, it is
+ *       considered a failure.</li>
+ *   <li><strong>Latency Calculation</strong>: Measures the round-trip time in milliseconds from
+ *       the start of the connection attempt to either successful connection or failure.</li>
+ *   <li><strong>Failure Handling</strong>: Catches {@link java.net.SocketTimeoutException},
+ *       {@link java.net.ConnectException}, and other {@link Exception} types. Failed checks
+ *       record the exception type and message in the {@code errorMessage} field.</li>
+ *   <li><strong>Persistence</strong>: All TCP check results are persisted to the SQLite database
+ *       via {@link CheckResultRepository} for historical analysis and incident tracking.</li>
+ *   <li><strong>Prometheus Metrics</strong>: Exposes two gauge metrics per device:
+ *       <ul>
+ *         <li>{@code network_device_up} - TCP connectivity status (1.0 = UP, 0.0 = DOWN)</li>
+ *         <li>{@code network_device_latency_ms} - Latest TCP connection latency in milliseconds</li>
+ *       </ul>
+ *   </li>»
+ * </ol>
+ * <p>
+ * <strong>Design Rationale</strong>:
+ * <ul>
+ *   <li>TCP checks are persisted because they represent application-level reachability
+ *       (e.g., web server on port 80, database on port 5432) and are needed for audit trails.</li>
+ *   <li>TCP and ICMP checks are separated to distinguish between service-level failures
+ *       (TCP port unreachable) and network-level failures (host completely unreachable).</li>
+ *   <li>Metrics use {@code device_id}, {@code device}, and {@code host} labels to enable
+ *       flexible filtering in Grafana dashboards and Prometheus queries.</li>
+ * </ul>
+ *
+ * @see PingCheckService for ICMP reachability checks
+ * @see CheckResultEntity for the persisted check result structure
+ * @see MonitoringScheduler for the scheduled execution of checks
  */
 @Service
 public class DeviceCheckService {
@@ -93,9 +128,52 @@ public class DeviceCheckService {
     }
 
     /**
-     * Registers reachability and latency gauges for every configured device.
+     * Registers TCP connectivity metrics for each configured device.
+     * <p>
+     * <strong>Metric: {@code network_device_up}</strong>:
+     * <ul>
+     *   <li>Type: Gauge (0.0 or 1.0)</li>
+     *   <li>Value: {@code 1.0} = UP (connection successful), {@code 0.0} = DOWN (connection failed)</li>
+     *   <li>Labels:
+     *     <ul>
+     *       <li>{@code device_id}: Unique device identifier (e.g., {@code "router"})</li>
+     *       <li>{@code device}: Human-readable device name (e.g., {@code "Router"})</li>
+     *       <li>{@code host}: IP address or hostname (e.g., {@code "192.0.2.1"})</li>
+     *     </ul>
+     *   </li>
+     *   <li>PromQL Example:
+     *     <pre>{@code
+     *     # Check if Router is up
+     *     network_device_up{device="Router"}
      *
-     * @param registry Micrometer meter registry
+     *     # Count all up devices
+     *     sum(network_device_up{device!=""})
+     *     }</pre>
+     *   </li>
+     * </ul>
+     * <p>
+     * <strong>Metric: {@code network_device_latency_ms}</strong>:
+     * <ul>
+     *   <li>Type: Gauge (milliseconds)</li>
+     *   <li>Value: Latest TCP connection latency (e.g., {@code 15.0} = 15ms)</li>
+     *   <li>Labels: Same as {@code network_device_up}</li>
+     *   <li>PromQL Example:
+     *     <pre>{@code
+     *     # Average latency across all devices
+     *     avg(network_device_latency_ms{device!=""})
+     *
+     *     # Alert if latency > 100ms for 5 minutes
+     *     avg_over_time(network_device_latency_ms{device="Router"}[5m]) > 100
+     *     }</pre>
+     *   </li>
+     * </ul>
+     * <p>
+     * <strong>Label Design Rationale</strong>:
+     * <ul>
+     *   <li>{@code device_id}: Stable identifier for joining with configuration data.</li>
+     *   <li>{@code device}: Human-readable name for dashboard display.</li>
+     *   <li>{@code host}: Enables filtering by IP range or subnet in PromQL.</li>
+     * </ul>
      */
     private void registerMetrics(MeterRegistry registry) {
         for (Device device : devices) {
@@ -135,10 +213,19 @@ public class DeviceCheckService {
     }
 
     /**
-     * Checks all enabled devices, updates metrics, persists every result, and stores
-     * the latest result list in memory.
+     * Executes TCP connectivity checks for all enabled devices.
+     * <p>
+     * For each device:
+     * <ol>
+     *   <li>Skips disabled devices ({@code device.enabled = false})</li>
+     *   <li>Creates a new {@link Socket} and attempts connection</li>
+     *   <li>Records success/failure and latency</li>
+     *   <li>Persists result via {@link CheckResultRepository#save(CheckResultEntity)}</li>
+     *   <li>Updates Prometheus gauges for real-time monitoring</li>
+     * </ol>
      *
-     * @return immutable list of results for enabled devices
+     * @return immutable list of check results for all enabled devices
+     * @see #checkDevice(Device) for single-device check logic
      */
     @Transactional
     public synchronized List<CheckResult> checkAllDevices() {
@@ -234,10 +321,26 @@ public class DeviceCheckService {
     }
 
     /**
-     * Performs one TCP connection check.
+     * Performs a TCP connectivity check on a single device.
+     * <p>
+     * <strong>Timeout</strong>: Uses {@code monitoring.timeout} from configuration
+     * (default: 100ms in tests, configurable in production).
+     * <p>
+     * <strong>Latency Calculation</strong>:
+     * \[
+     * \text{latencyMs} = \frac{\text{System.nanoTime()}_{\text{end}} - \text{System.nanoTime()}_{\text{start}}}{1,000,000}
+     * \]
+     * <p>
+     * <strong>Failure Scenarios</strong>:
+     * <ul>
+     *   <li>{@link SocketTimeoutException}: Connection exceeded timeout</li>
+     *   <li>{@link ConnectException}: Connection refused (no service on port)</li>
+     *   <li>{@link UnknownHostException}: DNS resolution failed</li>
+     *   <li>Other {@link Exception}: Network unreachable, permission denied, etc.</li>
+     * </ul>
      *
-     * @param device device to check
-     * @return current check result
+     * @param device the device to check (host, port, timeout)
+     * @return check result containing status, latency, and optional error message
      */
     public CheckResult checkDevice(Device device) {
         long startNanos = System.nanoTime();

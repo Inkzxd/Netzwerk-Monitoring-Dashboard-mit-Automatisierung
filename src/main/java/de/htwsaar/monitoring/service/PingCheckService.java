@@ -18,9 +18,39 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Performs ICMP reachability checks independently from TCP checks.
- *
+ * <p>
+ * <strong>Important: InetAddress.isReachable() Limitations</strong>:
+ * <ul>
+ *   <li><strong>Windows</strong>: Uses ICMP ECHO requests (real ping). Requires
+ *       administrator privileges or firewall rules allowing ICMP.</li>
+ *   <li><strong>Linux/Unix</strong>: May use ICMP ECHO or TCP ACK to port 7
+ *       depending on JVM implementation and permissions.</li>
+ *   <li><strong>Docker Containers</strong>: ICMP is often blocked by default.
+ *       Use {@code --cap-add=NET_RAW} or disable firewall rules for testing.</li>
+ *   <li><strong>Timeout Accuracy</strong>: The timeout parameter is approximate
+ *       and may be affected by OS scheduling and network stack delays.</li>
+ * </ul>
+ * <p>
+ * <strong>Why Ping Results Are Not Persisted</strong>:
+ * <ul>
+ *   <li><strong>Volume</strong>: ICMP checks run every 15 seconds for all devices,
+ *       generating 5,760 records per device per day. This would quickly bloat
+ *       the SQLite database.</li>
+ *   <li><strong>Purpose</strong>: Ping is used for real-time network health
+ *       monitoring and alerting, not historical analysis. TCP checks serve
+ *       as the authoritative record of service availability.</li>
+ *   <li><strong>Metrics Sufficiency</strong>: Prometheus scrapes metrics every 10s
+ *       and retains them according to the retention policy (default: 15 days),
+ *       providing sufficient historical data for trend analysis.</li>
+ *   <li><strong>Separation of Concerns</strong>: TCP = service-level monitoring
+ *       (persisted), ICMP = network-level monitoring (ephemeral, metrics-only).</li>
+ * </ul>
+ * <p>
  * Ping results are exposed as Prometheus gauges and are intentionally not
- * persisted in the TCP check_results table.
+ * persisted in the TCP {@code check_results} table.
+ *
+ * @see DeviceCheckService for TCP connectivity checks (persisted)
+ * @see java.net.InetAddress#isReachable(int) for implementation details
  */
 @Service
 public class PingCheckService {
@@ -51,6 +81,36 @@ public class PingCheckService {
         registerMetrics(registry);
     }
 
+    /**
+     * Registers ICMP ping metrics for each configured device.
+     * <p>
+     * <strong>Metric: {@code network_device_ping_up}</strong>:
+     * <ul>
+     *   <li>Type: Gauge (0.0 or 1.0)</li>
+     *   <li>Value: {@code 1.0} = UP (ICMP reachable), {@code 0.0} = DOWN (ICMP unreachable)</li>
+     *   <li>Labels: Same as TCP metrics ({@code device_id}, {@code device}, {@code host})</li>
+     *   <li>PromQL Example:
+     *     <pre>{@code
+     *     # Check network-level reachability
+     *     network_device_ping_up{device="Router"}
+     *     }</pre>
+     *   </li>
+     * </ul>
+     * <p>
+     * <strong>Metric: {@code network_device_ping_latency_ms}</strong>:
+     * <ul>
+     *   <li>Type: Gauge (milliseconds)</li>
+     *   <li>Value: Latest ICMP ping latency</li>
+     *   <li>Labels: Same as TCP metrics</li>
+     *   <li>PromQL Example:
+     *     <pre>{@code
+     *     # Compare TCP vs ICMP latency
+     *     network_device_latency_ms{device="Router"}
+     *     network_device_ping_latency_ms{device="Router"}
+     *     }</pre>
+     *   </li>
+     * </ul>
+     */
     private void registerMetrics(MeterRegistry registry) {
         for (Device device : devices) {
             pingStatusMetrics.put(device.getId(), Double.NaN);

@@ -11,12 +11,70 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Service responsible for creating, resolving, and retrieving monitoring incidents.
+ * Service responsible for creating, deduplicating, and resolving monitoring incidents
+ * based on Alertmanager webhook notifications.
+ * <p>
+ * <strong>Alertmanager Fingerprint</strong>:
+ * <ul>
+ *   <li>Each Alertmanager alert includes a {@code fingerprint} field - a unique hash
+ *       computed from the alert's labels (e.g., {@code alertname}, {@code device},
+ *       {@code host}, {@code severity}).</li>
+ *   <li>The fingerprint remains constant across {@code firing} and {@code resolved}
+ *       states for the same underlying issue, enabling reliable correlation.</li>
+ *   <li>Example fingerprint: {@code "abc123def456"} (computed by Alertmanager).</li>
+ * </ul>
+ * <p>
+ * <strong>Deduplication Logic</strong>:
+ * <ol>
+ *   <li>When a {@code firing} alert arrives:
+ *     <ul>
+ *       <li>Query {@link IncidentRepository} for an existing incident with the same
+ *           {@code fingerprint} and {@code status = FIRING}.</li>
+ *       <li>If found: <strong>Ignore</strong> (duplicate alert, incident already exists).</li>
+ *       <li>If not found: <strong>Create</strong> a new {@link Incident} with
+ *           {@code status = FIRING}.</li>
+ *     </ul>
+ *   </li>
+ *   <li>When a {@code resolved} alert arrives:
+ *     <ul>
+ *       <li>Query {@link IncidentRepository} for an existing incident with the same
+ *           {@code fingerprint} and {@code status = FIRING}.</li>
+ *       <li>If found: <strong>Resolve</strong> the incident by setting
+ *           {@code status = RESOLVED} and {@code resolvedAt = now}.</li>
+ *       <li>If not found: <strong>Log warning</strong> (resolved without firing -
+ *           possible race condition or missed alert).</li>
+ *     </ul>
+ *   </li>
+ * </ol>
+ * <p>
+ * <strong>FIRING/RESOLVED Lifecycle</strong>:
+ * <pre>{@code
+ * FIRING:
+ *   - Alertmanager detects threshold violation (e.g., network_device_up == 0 for 20s)
+ *   - Sends POST /api/alerts with status="firing" and fingerprint="abc123"
+ *   - IncidentService creates incident with status=FIRING, startedAt=now
+ *   - Dashboard shows incident in "Active incidents" panel
  *
- * <p>Incoming Alertmanager alerts are converted into {@link Incident} entities.
- * Firing alerts create new incidents unless an active incident with the same
- * fingerprint already exists. Resolved alerts mark the matching active incident
- * as resolved.</p>
+ * RESOLVED:
+ *   - Alertmanager detects threshold recovery (e.g., network_device_up == 1)
+ *   - Sends POST /api/alerts with status="resolved", fingerprint="abc123", endsAt=now
+ *   - IncidentService finds matching FIRING incident by fingerprint
+ *   - Updates status=RESOLVED, resolvedAt=now
+ *   - Dashboard moves incident to "Incident history" panel with duration calculation
+ * }</pre>
+ * <p>
+ * <strong>Edge Cases Handled</strong>:
+ * <ul>
+ *   <li>Null or blank fingerprint: Alert is ignored with warning log.</li>
+ *   <li>Missing labels: Defaults to {@code "unknown"} for safety.</li>
+ *   <li>Null {@code startsAt}: Uses current timestamp as fallback.</li>
+ *   <li>Null {@code endsAt}: Uses current timestamp for resolution time.</li>
+ *   <li>Empty {@code alerts} list: Webhook accepted but no incidents created/updated.</li>
+ * </ul>
+ *
+ * @see Incident for the entity structure
+ * @see IncidentRepository for database operations
+ * @see AlertWebhookController for webhook reception
  */
 @Service
 public class IncidentService {
